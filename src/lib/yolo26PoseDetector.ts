@@ -84,6 +84,17 @@ function loadWasmBinary(reporter?: ProgressReporter): Promise<ArrayBuffer> {
 
 function getSession(reporter?: ProgressReporter): Promise<ort.InferenceSession> {
   if (!sessionPromise) {
+    // Force single-threaded WASM explicitly. The bundled runtime is the
+    // "simd-threaded" build, which — unless told otherwise — tries to spawn
+    // Web Workers backed by a shared WebAssembly.Memory (SharedArrayBuffer).
+    // That only works in a cross-origin-isolated page (Cross-Origin-Opener-
+    // Policy/Cross-Origin-Embedder-Policy response headers), which this app
+    // doesn't set and Vercel doesn't add by default — without it, thread
+    // setup can hang instead of failing cleanly, rather than gracefully
+    // falling back on its own. numThreads: 1 skips that path entirely; the
+    // same binary runs fine single-threaded, just without the parallelism.
+    ort.env.wasm.numThreads = 1
+    ort.env.wasm.proxy = false
     sessionPromise = Promise.all([
       fetchBuffer(MODEL_URL, 'yolo26', reporter, MODEL_EXPECTED_BYTES),
       loadWasmBinary(reporter),
