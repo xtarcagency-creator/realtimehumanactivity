@@ -3,10 +3,6 @@
   background: var(--bg);
 }
 
-.landing a {
-  color: inherit;
-}
-
 /* ---- reveal-on-scroll ---- */
 .reveal {
   opacity: 0;
@@ -153,58 +149,72 @@
 .btn-cta {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   white-space: nowrap;
-  gap: 7px;
-  background: #f2f4f3;
-  color: #0a0d12;
-  font-size: 13px;
+  gap: 8px;
+  height: 52px;
+  padding: 0 24px;
+  background: #f5f7f8;
+  color: #0b1117;
+  font-size: 14px;
   font-weight: 600;
-  padding: 9px 15px;
-  border-radius: var(--radius-sm);
+  border-radius: 12px;
   text-decoration: none;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 6px 16px rgba(0, 0, 0, 0.25);
-  transition: background 160ms ease, transform 80ms ease, box-shadow 160ms ease;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  transition: background 160ms ease, color 160ms ease, transform 120ms ease, box-shadow 160ms ease;
+}
+
+.btn-cta svg {
+  color: currentColor;
 }
 
 .btn-cta:hover {
   background: #ffffff;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 20px rgba(0, 0, 0, 0.3);
+  color: #091017;
+  transform: translateY(-1px);
 }
 
 .btn-cta:active {
-  transform: translateY(1px);
+  background: #e9eef1;
+  color: #091017;
+  transform: translateY(0);
 }
 
 .btn-cta-sm {
-  padding: 7px 12px;
-  font-size: 12.5px;
+  height: 44px;
+  padding: 0 20px;
+  border-radius: 12px;
+  font-size: 13.5px;
+  font-weight: 600;
 }
 
 .btn-cta-lg {
-  font-size: 14px;
-  padding: 12px 22px;
+  height: 56px;
+  padding: 0 28px;
+  font-size: 15px;
 }
 
 .btn-ghost {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 7px;
+  height: 52px;
+  padding: 0 20px;
   background: transparent;
-  color: var(--text);
+  color: #e7edf3;
   font-size: 13px;
   font-weight: 500;
-  padding: 9px 15px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  border: 1px solid #26313a;
   text-decoration: none;
   transition: border-color 160ms ease, color 160ms ease, background 160ms ease;
 }
 
 .btn-ghost:hover {
-  border-color: var(--border-strong);
-  color: var(--text-h);
-  background: var(--panel-2);
+  border-color: #34414d;
+  background: rgba(255, 255, 255, 0.03);
 }
 
 /* ---- hero ---- */
