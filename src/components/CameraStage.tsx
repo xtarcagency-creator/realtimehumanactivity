@@ -164,9 +164,26 @@ export default function CameraStage({
     onModelLoadingChange(true)
     onModelLoadProgress(0)
     onModelLoadError(null)
-    preloadModels(quality, (fraction) => {
-      if (!cancelled) onModelLoadProgress(fraction)
+    // Once every tracked byte has downloaded, there's still real
+    // (untracked) work left — parsing each model's graph and uploading its
+    // weights to WebGL, plus compiling the WASM module — which has no
+    // progress signal of its own. Without a hard cap, a genuine hang in
+    // that step (a WebGL/backend issue, since downloads are now fully
+    // accounted for) would sit forever with zero feedback, indistinguishable
+    // from just being slow.
+    const LOAD_TIMEOUT_MS = 45000
+    const timeout = new Promise<never>((_, reject) => {
+      window.setTimeout(
+        () => reject(new Error(`Timed out initializing the ${quality} model after ${LOAD_TIMEOUT_MS / 1000}s.`)),
+        LOAD_TIMEOUT_MS,
+      )
     })
+    Promise.race([
+      preloadModels(quality, (fraction) => {
+        if (!cancelled) onModelLoadProgress(fraction)
+      }),
+      timeout,
+    ])
       .then(() => {
         if (!cancelled) onModelLoadProgress(1)
       })

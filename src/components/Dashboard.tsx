@@ -155,7 +155,13 @@ export default function Dashboard({
               ) : (
                 <CheckCircle size={13} weight="fill" style={{ color: 'var(--good)' }} />
               )}
-              {modelLoadError ? 'Failed' : modelLoading ? `Loading ${Math.round(modelLoadProgress * 100)}%` : 'Ready'}
+              {modelLoadError
+                ? 'Failed'
+                : modelLoading
+                  ? modelLoadProgress >= 0.99
+                    ? 'Finishing…'
+                    : `Loading ${Math.round(modelLoadProgress * 100)}%`
+                  : 'Ready'}
             </span>
             <span className="stat-label">status</span>
           </div>

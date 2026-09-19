@@ -120,7 +120,7 @@ function Analyser() {
           ) : modelLoading ? (
             <span className="status-pill status-pill-loading">
               <CircleNotch size={11} weight="bold" className="spin" />
-              Loading model {Math.round(modelLoadProgress * 100)}%
+              {modelLoadProgress >= 0.99 ? 'Finishing setup…' : `Loading model ${Math.round(modelLoadProgress * 100)}%`}
             </span>
           ) : (
             <span className="status-pill status-pill-ready">
