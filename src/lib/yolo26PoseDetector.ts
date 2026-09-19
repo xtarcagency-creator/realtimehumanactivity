@@ -129,8 +129,42 @@ async function createWasmOnlySession(reporter?: ProgressReporter): Promise<OrtSe
   return session
 }
 
+// GPU adapter/device creation is normally near-instant (well under a
+// second) when it's going to work at all — this caps how long we'll wait
+// before giving up and falling back to WASM. Confirmed necessary, not just
+// theoretical: WebGPU gave real speed when it worked, but also produced a
+// genuine hang on "loading the High model" on a later attempt on the same
+// hardware — a .catch() alone can't do anything about that, since a hang
+// never rejects, it just never settles. This races the actual
+// adapter/session step against a timeout so a hang gets a bounded cost
+// (falls back in ~6s) instead of an unbounded one (blocked until the
+// caller's own much longer compile-phase watchdog eventually gives up).
+const WEBGPU_TIMEOUT_MS = 6000
+
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = window.setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)
+    promise.then(
+      (v) => {
+        window.clearTimeout(timer)
+        resolve(v)
+      },
+      (err) => {
+        window.clearTimeout(timer)
+        reject(err)
+      },
+    )
+  })
+}
+
 async function createWebgpuSession(reporter?: ProgressReporter): Promise<OrtSession> {
   configureSingleThreaded(ortWebgpu)
+  // The download itself is deliberately NOT under the timeout above — a
+  // slow-but-progressing ~27MB download on a weak connection is not a hang
+  // and can legitimately take longer than a few seconds; the caller's own
+  // download-stall watchdog already covers that case correctly. Only the
+  // actual adapter/device/session step below — the part with a real history
+  // of hanging instead of failing — gets the short cap.
   const [modelBuf, wasmBuf] = await Promise.all([
     fetchBuffer(MODEL_URL, 'yolo26', reporter, MODEL_EXPECTED_BYTES),
     fetchBuffer(WEBGPU_WASM_URL, 'yolo26-wasm-webgpu', reporter, WEBGPU_WASM_EXPECTED_BYTES),
@@ -138,26 +172,23 @@ async function createWebgpuSession(reporter?: ProgressReporter): Promise<OrtSess
   ortWebgpu.env.wasm.wasmBinary = wasmBuf
   // 'wasm' listed as a fallback provider too — ONNX Runtime's own provider
   // list already skips to the next entry if 'webgpu' turns out unsupported
-  // partway through, on top of the explicit catch below for when session
-  // creation fails outright instead of gracefully falling back internally.
-  const session = await ortWebgpu.InferenceSession.create(modelBuf, { executionProviders: ['webgpu', 'wasm'] })
+  // partway through, on top of the explicit catch below (in getSession) for
+  // when session creation fails outright, or this timeout, instead of
+  // gracefully falling back internally.
+  const session = await withTimeout(
+    ortWebgpu.InferenceSession.create(modelBuf, { executionProviders: ['webgpu', 'wasm'] }),
+    WEBGPU_TIMEOUT_MS,
+    'WebGPU session creation',
+  )
   activeOrt = ortWebgpu
   return session
 }
 
-// Disabled by default. The WebGPU attempt below only guards against
-// *rejection* (session creation throwing, or ORT's own provider fallback
-// kicking in) — it can't do anything about `navigator.gpu.requestAdapter()`
-// or device creation itself hanging instead of ever resolving or rejecting,
-// which is a real, known failure mode on some GPU driver/browser
-// combinations, and matches a real report of the app hanging on High right
-// after this was added. This project has already hit one hard WebGPU
-// failure before (see tfBackend.ts) — not worth the risk a second time
-// without a way to verify it on real GPU hardware first (this session has
-// none). Flip to true only after confirming success on real hardware, and
-// even then consider adding a hard timeout around the WebGPU attempt itself
-// (not just the overall load) so a hang can't ever block a fallback.
-const TRY_WEBGPU = false
+// Re-enabled now that a real hang can no longer block the whole load — see
+// WEBGPU_TIMEOUT_MS above. Falls back to the always-reliable single-threaded
+// WASM path (createWasmOnlySession) whether WebGPU rejects outright or just
+// never finishes in time.
+const TRY_WEBGPU = true
 
 function getSession(reporter?: ProgressReporter): Promise<OrtSession> {
   if (!sessionPromise) {
