@@ -44,10 +44,17 @@ const WASM_EXPECTED_BYTES = 14239897
 const WEBGPU_WASM_URL = '/models/ort-wasm-simd-threaded.asyncify.wasm'
 const WEBGPU_WASM_EXPECTED_BYTES = 26781914
 const INPUT_SIZE = 640
-// Lowered from the library's typical 0.25 default — recall matters more
-// than precision here, matching the same reasoning as the old box-only
-// YOLO detector this replaces.
-const CONF_THRESHOLD = 0.15
+// Raised well above the library's typical 0.25 default. The old box-only
+// YOLO detector this replaces ran permissively (0.15) because it was one of
+// two detectors being unioned together — a low-confidence false positive
+// from YOLO alone still needed MoveNet's independent box output to agree
+// before surviving the union, so noise got filtered downstream. YOLO26-pose
+// is the only detector now: nothing unions its output with a second
+// opinion, so every low-confidence guess that clears the threshold becomes
+// a real, visible false detection instead of being caught later. 0.4 cuts
+// that noise while still comfortably catching real people, who scored
+// 0.7-0.9+ in every validation test run against this model.
+const CONF_THRESHOLD = 0.4
 const NMS_IOU_THRESHOLD = 0.45
 // Output layout: rows 0-3 are box (cx,cy,w,h) in letterboxed pixel space,
 // row 4 is the single-class (person) confidence, already sigmoid-activated
