@@ -100,6 +100,17 @@ export function resetTopDownTracker() {
   framesSinceRefresh = BOX_REFRESH_INTERVAL
 }
 
+// Which of the three loads are still in flight, for surfacing in a timeout
+// error — the download phase is fully progress-tracked, but the compile
+// step after it (WebGL graph parsing/upload, WASM instantiation) isn't, so
+// when that step stalls the only way to say *which* of the three is the one
+// not finishing is to track pending steps explicitly like this.
+const pendingLoadSteps = new Set<string>()
+
+export function getPendingLoadSteps(): string[] {
+  return Array.from(pendingLoadSteps)
+}
+
 /**
  * Warm all three models (YOLO, Thunder, MultiPose-proposal) so switching to
  * High doesn't stall the first frame. `onProgress` gets a single 0-1
@@ -118,10 +129,16 @@ export function resetTopDownTracker() {
  */
 export async function preloadTopDownModels(onProgress?: (fraction: number) => void): Promise<void> {
   const reporter = onProgress ? createProgressAggregator(onProgress) : undefined
-  const yoloPromise = preloadYoloModel(reporter)
+  pendingLoadSteps.add('yolo (ONNX Runtime / WASM)')
+  const yoloPromise = preloadYoloModel(reporter).finally(() => pendingLoadSteps.delete('yolo (ONNX Runtime / WASM)'))
+  pendingLoadSteps.add('thunder (MoveNet, WebGL)')
   await getSinglePoseDetector(reporter)
+  pendingLoadSteps.delete('thunder (MoveNet, WebGL)')
+  pendingLoadSteps.add('proposal (MoveNet, WebGL)')
   await getProposalDetector(reporter)
+  pendingLoadSteps.delete('proposal (MoveNet, WebGL)')
   await yoloPromise
+  pendingLoadSteps.clear()
 }
 
 function iou(a: BoxProposal, b: BoxProposal): number {

@@ -15,6 +15,7 @@ import {
 } from '@phosphor-icons/react'
 import { estimatePoses, estimateDetailedPoses, preloadModels, resetTracking } from '../lib/pose'
 import type { Pose } from '../lib/pose'
+import { getPendingLoadSteps } from '../lib/topDownPose'
 import { classifyActivity, getCentroid, pushHistory } from '../lib/activity'
 import {
   pointInZone,
@@ -192,9 +193,11 @@ export default function CameraStage({
           return
         }
         if (enteredCompilePhase && now - compilePhaseStartedAt > COMPILE_PHASE_MS) {
+          const pending = getPendingLoadSteps()
+          const stuckOn = pending.length ? ` Stuck on: ${pending.join(', ')}.` : ''
           reject(
             new Error(
-              `Timed out initializing the ${quality} model — downloads finished but setup didn't complete after ${COMPILE_PHASE_MS / 1000}s.`,
+              `Timed out initializing the ${quality} model — downloads finished but setup didn't complete after ${COMPILE_PHASE_MS / 1000}s.${stuckOn}`,
             ),
           )
           return
