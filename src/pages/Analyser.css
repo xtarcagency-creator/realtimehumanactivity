@@ -70,6 +70,30 @@
   background: var(--primary-soft);
 }
 
+.status-pill-error {
+  color: var(--warn);
+  border-color: color-mix(in srgb, var(--warn) 28%, var(--border));
+  background: var(--warn-soft);
+  cursor: help;
+}
+
+.status-pill-retry {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 2px;
+  padding: 2px;
+  background: transparent;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.status-pill-retry:hover {
+  background: color-mix(in srgb, var(--warn) 18%, transparent);
+}
+
 .source-bar {
   display: flex;
   align-items: center;

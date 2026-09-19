@@ -82,6 +82,8 @@ interface Props {
   loiterThresholdSec: number
   onModelLoadingChange: (loading: boolean) => void
   onModelLoadProgress: (fraction: number) => void
+  onModelLoadError: (message: string | null) => void
+  modelRetryToken: number
   onFileDrop: (file: File) => void
   onRequestUpload: () => void
 }
@@ -101,6 +103,8 @@ export default function CameraStage({
   loiterThresholdSec,
   onModelLoadingChange,
   onModelLoadProgress,
+  onModelLoadError,
+  modelRetryToken,
   onFileDrop,
   onRequestUpload,
 }: Props) {
@@ -159,19 +163,31 @@ export default function CameraStage({
     let cancelled = false
     onModelLoadingChange(true)
     onModelLoadProgress(0)
+    onModelLoadError(null)
     preloadModels(quality, (fraction) => {
       if (!cancelled) onModelLoadProgress(fraction)
-    }).finally(() => {
-      if (!cancelled) {
-        onModelLoadProgress(1)
-        onModelLoadingChange(false)
-      }
     })
+      .then(() => {
+        if (!cancelled) onModelLoadProgress(1)
+      })
+      .catch((err) => {
+        // Previously swallowed entirely — modelLoading still flipped back to
+        // false via the finally below, so a real failure (network, backend
+        // init, a bad model file) looked identical to a successful load with
+        // no way to tell the two apart from the UI.
+        console.error(`[CameraStage] failed to load ${quality} models`, err)
+        if (!cancelled) {
+          onModelLoadError(err instanceof Error ? err.message : `Failed to load the ${quality} detection model.`)
+        }
+      })
+      .finally(() => {
+        if (!cancelled) onModelLoadingChange(false)
+      })
     return () => {
       cancelled = true
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [quality])
+  }, [quality, modelRetryToken])
 
   useEffect(() => {
     loiterThresholdRef.current = loiterThresholdSec

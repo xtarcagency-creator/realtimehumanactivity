@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { VideoCamera, UploadSimple, ArrowLeft, CircleNotch, CheckCircle } from '@phosphor-icons/react'
+import { VideoCamera, UploadSimple, ArrowLeft, CircleNotch, CheckCircle, WarningCircle, ArrowClockwise } from '@phosphor-icons/react'
 import CameraStage from '../components/CameraStage'
 import Dashboard from '../components/Dashboard'
 import type { ActivityEvent, DetectionQuality, Source, TrackedPerson, Zone } from '../lib/types'
@@ -37,6 +37,8 @@ function Analyser() {
   const [loiterThresholdSec, setLoiterThresholdSec] = useState(DEFAULT_LOITER_THRESHOLD_SEC)
   const [modelLoading, setModelLoading] = useState(false)
   const [modelLoadProgress, setModelLoadProgress] = useState(0)
+  const [modelLoadError, setModelLoadError] = useState<string | null>(null)
+  const [modelRetryToken, setModelRetryToken] = useState(0)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -102,7 +104,20 @@ function Analyser() {
           <span className="brand-name">Realtime Activity Analyzer</span>
         </Link>
         <div className="header-status">
-          {modelLoading ? (
+          {modelLoadError ? (
+            <span className="status-pill status-pill-error" title={modelLoadError}>
+              <WarningCircle size={11} weight="fill" />
+              Model failed to load
+              <button
+                className="status-pill-retry"
+                onClick={() => setModelRetryToken((n) => n + 1)}
+                aria-label="Retry loading the model"
+                title="Retry"
+              >
+                <ArrowClockwise size={11} weight="bold" />
+              </button>
+            </span>
+          ) : modelLoading ? (
             <span className="status-pill status-pill-loading">
               <CircleNotch size={11} weight="bold" className="spin" />
               Loading model {Math.round(modelLoadProgress * 100)}%
@@ -157,6 +172,8 @@ function Analyser() {
           loiterThresholdSec={loiterThresholdSec}
           onModelLoadingChange={setModelLoading}
           onModelLoadProgress={setModelLoadProgress}
+          onModelLoadError={setModelLoadError}
+          modelRetryToken={modelRetryToken}
           onFileDrop={handleFile}
           onRequestUpload={() => fileInputRef.current?.click()}
         />
@@ -177,6 +194,8 @@ function Analyser() {
           onLoiterThresholdChange={setLoiterThresholdSec}
           modelLoading={modelLoading}
           modelLoadProgress={modelLoadProgress}
+          modelLoadError={modelLoadError}
+          onRetryModelLoad={() => setModelRetryToken((n) => n + 1)}
         />
       </main>
     </div>

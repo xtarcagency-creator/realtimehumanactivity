@@ -14,6 +14,8 @@ import {
   UsersThree,
   Info,
   CaretDown,
+  WarningCircle,
+  ArrowClockwise,
 } from '@phosphor-icons/react'
 import { ACTIVITY_COLORS } from '../lib/activityColors'
 import type { ActivityEvent, DetectionQuality, TrackedPerson, Zone } from '../lib/types'
@@ -58,6 +60,8 @@ interface Props {
   onLoiterThresholdChange: (sec: number) => void
   modelLoading: boolean
   modelLoadProgress: number
+  modelLoadError: string | null
+  onRetryModelLoad: () => void
 }
 
 type SectionKey = 'live' | 'detection' | 'zones' | 'people' | 'events'
@@ -79,6 +83,8 @@ export default function Dashboard({
   onLoiterThresholdChange,
   modelLoading,
   modelLoadProgress,
+  modelLoadError,
+  onRetryModelLoad,
 }: Props) {
   const [collapsed, setCollapsed] = useState<Record<SectionKey, boolean>>({
     live: false,
@@ -133,19 +139,32 @@ export default function Dashboard({
           </div>
           <div className="stat">
             <span className="stat-value stat-value-status">
-              {modelLoading ? (
+              {modelLoadError ? (
+                <WarningCircle size={13} weight="fill" style={{ color: 'var(--warn)' }} />
+              ) : modelLoading ? (
                 <CircleNotch size={13} weight="bold" className="spin" />
               ) : (
                 <CheckCircle size={13} weight="fill" style={{ color: 'var(--good)' }} />
               )}
-              {modelLoading ? `Loading ${Math.round(modelLoadProgress * 100)}%` : 'Ready'}
+              {modelLoadError ? 'Failed' : modelLoading ? `Loading ${Math.round(modelLoadProgress * 100)}%` : 'Ready'}
             </span>
             <span className="stat-label">status</span>
           </div>
         </div>
-        {modelLoading && (
+        {modelLoading && !modelLoadError && (
           <div className="progress-bar" role="progressbar" aria-valuenow={Math.round(modelLoadProgress * 100)} aria-valuemin={0} aria-valuemax={100}>
             <div className="progress-bar-fill" style={{ width: `${Math.max(4, modelLoadProgress * 100)}%` }} />
+          </div>
+        )}
+        {modelLoadError && (
+          <div className="switch-confirm">
+            <span>{modelLoadError}</span>
+            <div className="switch-confirm-actions">
+              <button className="btn btn-sm active" onClick={onRetryModelLoad}>
+                <ArrowClockwise size={12} weight="bold" />
+                Retry
+              </button>
+            </div>
           </div>
         )}
       </Section>
