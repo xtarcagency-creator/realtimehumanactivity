@@ -13,17 +13,30 @@
 // this in: decoded boxes and keypoints from this exact letterbox+decode
 // logic matched the reference output closely (same detections, same
 // confidence range, keypoint coordinates within ~1px).
-import * as ort from 'onnxruntime-web/wasm'
+import * as ortWasm from 'onnxruntime-web/wasm'
+import * as ortWebgpu from 'onnxruntime-web/webgpu'
 import { fetchBuffer, type ProgressReporter } from './downloadProgress'
 import type { Pose } from './pose'
+
+type Ort = typeof ortWasm
+type OrtSession = Awaited<ReturnType<Ort['InferenceSession']['create']>>
 
 const MODEL_URL = '/models/yolo26n-pose.onnx'
 // Exact size of the bundled file above, used only as a progress-bar
 // fallback (see fetchBuffer) when a CDN drops Content-Length in flight.
 // Update if the model file is ever replaced.
 const MODEL_EXPECTED_BYTES = 12111334
+// The plain (smaller, single-threaded-only) wasm runtime, used whenever
+// WebGPU isn't attempted or fails.
 const WASM_URL = '/models/ort-wasm-simd-threaded.wasm'
 const WASM_EXPECTED_BYTES = 14239897
+// WebGPU needs ONNX Runtime's "asyncify" wasm variant instead — a real ~12MB
+// heavier download, only fetched when `navigator.gpu` exists at all (so a
+// browser with no WebGPU support, e.g. Safari, never pays for it) and
+// discarded in favor of the plain runtime above if session creation with it
+// still fails for any reason.
+const WEBGPU_WASM_URL = '/models/ort-wasm-simd-threaded.asyncify.wasm'
+const WEBGPU_WASM_EXPECTED_BYTES = 26781914
 const INPUT_SIZE = 640
 // Lowered from the library's typical 0.25 default — recall matters more
 // than precision here, matching the same reasoning as the old box-only
@@ -71,43 +84,69 @@ export interface RawPersonDetection {
   keypoints: Pose['keypoints']
 }
 
-let sessionPromise: Promise<ort.InferenceSession> | null = null
-let wasmBinaryPromise: Promise<ArrayBuffer> | null = null
+let sessionPromise: Promise<OrtSession> | null = null
 let letterboxCanvas: HTMLCanvasElement | null = null
+// Whichever module (wasm-only or webgpu-capable) actually created the
+// working session — inference calls below need its own Tensor class to
+// build the input, matching whatever backend ended up running.
+let activeOrt: Ort = ortWasm
 
-function loadWasmBinary(reporter?: ProgressReporter): Promise<ArrayBuffer> {
-  if (!wasmBinaryPromise) {
-    wasmBinaryPromise = fetchBuffer(WASM_URL, 'yolo26-wasm', reporter, WASM_EXPECTED_BYTES)
-  }
-  return wasmBinaryPromise
+// Explicitly single-threaded on both paths. The bundled runtimes are the
+// "simd-threaded" family, which — unless told otherwise — try to spawn Web
+// Workers backed by a shared WebAssembly.Memory (SharedArrayBuffer). That
+// only works on a cross-origin-isolated page (Cross-Origin-Opener-Policy/
+// Cross-Origin-Embedder-Policy response headers), which this app doesn't
+// set and Vercel doesn't add by default — without it, thread setup can hang
+// instead of failing cleanly. numThreads: 1 skips that path entirely on
+// both the WASM execution provider and WebGPU's own wasm-side glue code.
+function configureSingleThreaded(ort: Ort) {
+  ort.env.wasm.numThreads = 1
+  ort.env.wasm.proxy = false
 }
 
-function getSession(reporter?: ProgressReporter): Promise<ort.InferenceSession> {
+async function createWasmOnlySession(reporter?: ProgressReporter): Promise<OrtSession> {
+  configureSingleThreaded(ortWasm)
+  const [modelBuf, wasmBuf] = await Promise.all([
+    fetchBuffer(MODEL_URL, 'yolo26', reporter, MODEL_EXPECTED_BYTES),
+    fetchBuffer(WASM_URL, 'yolo26-wasm', reporter, WASM_EXPECTED_BYTES),
+  ])
+  ortWasm.env.wasm.wasmBinary = wasmBuf
+  const session = await ortWasm.InferenceSession.create(modelBuf, { executionProviders: ['wasm'] })
+  activeOrt = ortWasm
+  return session
+}
+
+async function createWebgpuSession(reporter?: ProgressReporter): Promise<OrtSession> {
+  configureSingleThreaded(ortWebgpu)
+  const [modelBuf, wasmBuf] = await Promise.all([
+    fetchBuffer(MODEL_URL, 'yolo26', reporter, MODEL_EXPECTED_BYTES),
+    fetchBuffer(WEBGPU_WASM_URL, 'yolo26-wasm-webgpu', reporter, WEBGPU_WASM_EXPECTED_BYTES),
+  ])
+  ortWebgpu.env.wasm.wasmBinary = wasmBuf
+  // 'wasm' listed as a fallback provider too — ONNX Runtime's own provider
+  // list already skips to the next entry if 'webgpu' turns out unsupported
+  // partway through, on top of the explicit catch below for when session
+  // creation fails outright instead of gracefully falling back internally.
+  const session = await ortWebgpu.InferenceSession.create(modelBuf, { executionProviders: ['webgpu', 'wasm'] })
+  activeOrt = ortWebgpu
+  return session
+}
+
+function getSession(reporter?: ProgressReporter): Promise<OrtSession> {
   if (!sessionPromise) {
-    // Force single-threaded WASM explicitly. The bundled runtime is the
-    // "simd-threaded" build, which — unless told otherwise — tries to spawn
-    // Web Workers backed by a shared WebAssembly.Memory (SharedArrayBuffer).
-    // That only works in a cross-origin-isolated page (Cross-Origin-Opener-
-    // Policy/Cross-Origin-Embedder-Policy response headers), which this app
-    // doesn't set and Vercel doesn't add by default — without it, thread
-    // setup can hang instead of failing cleanly, rather than gracefully
-    // falling back on its own. numThreads: 1 skips that path entirely; the
-    // same binary runs fine single-threaded, just without the parallelism.
-    ort.env.wasm.numThreads = 1
-    ort.env.wasm.proxy = false
-    sessionPromise = Promise.all([
-      fetchBuffer(MODEL_URL, 'yolo26', reporter, MODEL_EXPECTED_BYTES),
-      loadWasmBinary(reporter),
-    ]).then(([modelBuf, wasmBuf]) => {
-      ort.env.wasm.wasmBinary = wasmBuf
-      return ort.InferenceSession.create(modelBuf, { executionProviders: ['wasm'] })
-    })
+    const hasWebGPU = typeof navigator !== 'undefined' && 'gpu' in navigator
+    sessionPromise = hasWebGPU
+      ? createWebgpuSession(reporter).catch((err) => {
+          console.warn('[yolo26] WebGPU session creation failed, falling back to single-threaded WASM', err)
+          return createWasmOnlySession(reporter)
+        })
+      : createWasmOnlySession(reporter)
   }
   return sessionPromise
 }
 
 /** Preload the model so the first detection call isn't slowed by the fetch/compile. */
-export function preloadYolo26PoseModel(reporter?: ProgressReporter): Promise<ort.InferenceSession> {
+export function preloadYolo26PoseModel(reporter?: ProgressReporter): Promise<OrtSession> {
   return getSession(reporter)
 }
 
@@ -171,7 +210,7 @@ export async function detectPoses(video: HTMLVideoElement): Promise<RawPersonDet
     chw[2 * plane + i] = data[o + 2] / 255 // B
   }
 
-  const inputTensor = new ort.Tensor('float32', chw, [1, 3, INPUT_SIZE, INPUT_SIZE])
+  const inputTensor = new activeOrt.Tensor('float32', chw, [1, 3, INPUT_SIZE, INPUT_SIZE])
   const outputs = await session.run({ [session.inputNames[0]]: inputTensor })
   const raw = outputs[session.outputNames[0]]
   // Output shape [1, 56, 8400]: 4 box rows + 1 score row + 17*3 keypoint rows.
