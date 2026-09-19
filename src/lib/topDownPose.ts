@@ -107,12 +107,21 @@ export function resetTopDownTracker() {
  * weighted by each file's actual size — not three separate bars, since
  * they're loading concurrently and the user only cares how much of the
  * whole switch is left.
+ *
+ * The two MoveNet models are deliberately created one after the other, not
+ * concurrently — compiling two separate WebGL graph models (shaders +
+ * texture uploads) at the same time is real GPU contention, and unlike a
+ * slow load, contention like that can genuinely stall instead of just
+ * taking longer. YOLO runs alongside them regardless since it's a
+ * completely separate runtime (WASM, not WebGL) with nothing to contend
+ * over.
  */
-export function preloadTopDownModels(onProgress?: (fraction: number) => void): Promise<void> {
+export async function preloadTopDownModels(onProgress?: (fraction: number) => void): Promise<void> {
   const reporter = onProgress ? createProgressAggregator(onProgress) : undefined
-  return Promise.all([preloadYoloModel(reporter), getSinglePoseDetector(reporter), getProposalDetector(reporter)]).then(
-    () => undefined,
-  )
+  const yoloPromise = preloadYoloModel(reporter)
+  await getSinglePoseDetector(reporter)
+  await getProposalDetector(reporter)
+  await yoloPromise
 }
 
 function iou(a: BoxProposal, b: BoxProposal): number {

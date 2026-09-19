@@ -91,8 +91,19 @@ export async function estimateDetailedPoses(video: HTMLVideoElement): Promise<Po
  * (0-1) — 1 immediately if the tier's models are already cached from a
  * previous load.
  */
-export function preloadModels(quality: DetectionQuality, onProgress?: (fraction: number) => void): Promise<void> {
+export async function preloadModels(quality: DetectionQuality, onProgress?: (fraction: number) => void): Promise<void> {
   if (quality === 'high') {
+    // Switching to High never disposed the Fast/Balanced detector still
+    // sitting on the GPU — its WebGL textures stayed allocated while High
+    // then tried to compile two more MoveNet models on top of it (plus
+    // YOLO's WASM module) all at once. That real resource contention is the
+    // most likely cause of High's model-init step genuinely hanging instead
+    // of just being slow: free it first.
+    if (bottomUpCurrent) {
+      const stale = bottomUpCurrent
+      bottomUpCurrent = null
+      stale.detector.then((d) => d.dispose()).catch(() => {})
+    }
     return preloadTopDownModels(onProgress)
   }
   return getBottomUpDetector(quality, onProgress).then(() => undefined)
