@@ -1,56 +1,122 @@
+import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import {
-  ArrowRight,
-  GithubLogo,
-  UsersThree,
-  MapPinArea,
-  Cpu,
-  VideoCamera,
-  Waveform,
-  Bell,
-  CheckCircle,
-} from '@phosphor-icons/react'
+import { ArrowRight, GithubLogo } from '@phosphor-icons/react'
 import Reveal from '../components/Reveal'
+import DemoPanel from '../components/DemoPanel'
+import BootSequence from '../components/BootSequence'
 import './Landing.css'
 
 const REPO_URL = 'https://github.com/xtarcagency-creator/realtime'
 
 const TRUST_ROW = ['WebGL', 'WebAssembly', 'Local inference', 'No video uploads']
 
-const FEATURES = [
+const ARCHITECTURE = ['Camera / Video', 'Browser', 'Pose Model', 'Activity Engine', 'Events']
+
+const DEMO_STEPS = [
   {
     n: '01',
-    icon: UsersThree,
     title: 'Multi-person tracking',
-    body: 'Track multiple people and maintain persistent identities across the frame.',
+    body: 'Track multiple people across the frame using pose-based detection and persistent tracking.',
+    stage: 2,
   },
   {
     n: '02',
-    icon: MapPinArea,
-    title: 'Zone intelligence',
-    body: 'Draw custom regions and measure dwell time, entries, exits, and loitering.',
+    title: 'Detection zones',
+    body: 'Define regions inside the video feed and measure occupancy and dwell behavior.',
+    stage: 3,
   },
   {
     n: '03',
-    icon: Cpu,
-    title: 'Browser-native inference',
-    body: 'Run pose analysis locally using WebGL and WebAssembly without uploading footage.',
+    title: 'Activity events',
+    body: 'Turn movement into useful events such as entry, exit, and loitering detection.',
+    stage: 5,
   },
 ]
 
-const WORKFLOW = [
-  { n: '01', icon: VideoCamera, title: 'Input', body: 'Live camera or uploaded video' },
-  { n: '02', icon: Waveform, title: 'Analyze', body: 'Pose tracking + zone logic' },
-  { n: '03', icon: Bell, title: 'Detect', body: 'Activity events and dwell behavior' },
-]
+function usePrefersReducedMotion() {
+  const [reduced, setReduced] = useState(false)
+  useEffect(() => {
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)')
+    setReduced(mq.matches)
+    const handler = () => setReduced(mq.matches)
+    mq.addEventListener('change', handler)
+    return () => mq.removeEventListener('change', handler)
+  }, [])
+  return reduced
+}
 
-const PRIVACY_POINTS = ['No server upload', 'No external processing', 'Local inference']
+// Ties the hero preview's scale/position and its progressive overlay reveal
+// to how far the page has scrolled from the very top — a one-shot "coming
+// alive" moment as the user begins scrolling, not a pinned/scrubbed section.
+// Driven by scrollY directly (not element position) so it reliably starts
+// at 0 on load regardless of how tall the hero copy above it is.
+const HERO_REVEAL_DISTANCE = 420
 
-const ARCHITECTURE = ['Camera / Video', 'Browser', 'Pose Model', 'Activity Engine', 'Insights']
+function useHeroScroll(reduced: boolean) {
+  const ref = useRef<HTMLDivElement>(null)
+  const [progress, setProgress] = useState(reduced ? 1 : 0)
+
+  useEffect(() => {
+    if (reduced) {
+      setProgress(1)
+      return
+    }
+    let raf = 0
+    const onScroll = () => {
+      cancelAnimationFrame(raf)
+      raf = requestAnimationFrame(() => {
+        const p = window.scrollY / HERO_REVEAL_DISTANCE
+        setProgress(Math.min(1, Math.max(0, p)))
+      })
+    }
+    onScroll()
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => {
+      cancelAnimationFrame(raf)
+      window.removeEventListener('scroll', onScroll)
+    }
+  }, [reduced])
+
+  return { ref, progress }
+}
+
+function useActiveStep(count: number, reduced: boolean) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const stepRefs = useRef<(HTMLDivElement | null)[]>([])
+  const [active, setActive] = useState(0)
+
+  useEffect(() => {
+    if (reduced) return
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            const i = stepRefs.current.indexOf(entry.target as HTMLDivElement)
+            if (i >= 0) setActive(i)
+          }
+        }
+      },
+      { rootMargin: '-45% 0px -45% 0px', threshold: 0 },
+    )
+    stepRefs.current.slice(0, count).forEach((el) => el && observer.observe(el))
+    return () => observer.disconnect()
+  }, [count, reduced])
+
+  return { containerRef, stepRefs, active }
+}
 
 export default function Landing() {
+  const reduced = usePrefersReducedMotion()
+  const hero = useHeroScroll(reduced)
+  const demoStory = useActiveStep(DEMO_STEPS.length, reduced)
+
+  const heroScale = 0.93 + 0.07 * hero.progress
+  const heroTranslate = (1 - hero.progress) * 22
+  const heroStage = Math.ceil(hero.progress * 5)
+
   return (
     <div className="landing">
+      <BootSequence />
       <header className="landing-nav">
         <div className="landing-nav-inner">
           <span className="landing-logo">Realtime Activity Analyzer</span>
@@ -77,7 +143,7 @@ export default function Landing() {
             <h1>
               Understand human activity.
               <br />
-              <span className="accent-word">In real time.</span>
+              In real time.
             </h1>
           </Reveal>
           <Reveal delay={120}>
@@ -95,169 +161,72 @@ export default function Landing() {
               View Source
             </a>
           </Reveal>
-          <Reveal delay={220} className="trust-row">
-            {TRUST_ROW.map((item, i) => (
+          <div className="trust-row">
+            {TRUST_ROW.map((item) => (
               <span key={item} className="trust-item">
-                {i > 0 && <span className="trust-sep" />}
+                <span className="trust-dot" />
                 {item}
               </span>
             ))}
-          </Reveal>
-        </section>
-
-        <Reveal delay={100} className="preview">
-          <div className="hero-frame">
-            <div className="hero-frame-bar">
-              <span />
-              <span />
-              <span />
-            </div>
-            <div className="demo-app" aria-hidden="true">
-              <div className="demo-nav">
-                <span className="demo-brand">Realtime Activity Analyzer</span>
-                <span className="demo-status">
-                  <CheckCircle size={11} weight="fill" />
-                  Ready
-                </span>
-              </div>
-              <div className="demo-body">
-                <div className="demo-stage">
-                  <div className="demo-video">
-                    <div className="demo-box" style={{ top: '20%', left: '10%', width: '20%', height: '58%' }}>
-                      <span className="demo-box-label">#1</span>
-                      <svg className="demo-skeleton" viewBox="0 0 100 100" preserveAspectRatio="none">
-                        <circle cx="50" cy="12" r="7" />
-                        <line x1="50" y1="19" x2="50" y2="56" />
-                        <line x1="28" y1="28" x2="72" y2="28" />
-                        <line x1="28" y1="28" x2="18" y2="50" />
-                        <line x1="72" y1="28" x2="84" y2="46" />
-                        <line x1="34" y1="56" x2="66" y2="56" />
-                        <line x1="34" y1="56" x2="26" y2="94" />
-                        <line x1="66" y1="56" x2="74" y2="94" />
-                      </svg>
-                    </div>
-                    <div
-                      className="demo-box demo-box-muted"
-                      style={{ top: '26%', left: '56%', width: '17%', height: '48%' }}
-                    >
-                      <span className="demo-box-label">#2</span>
-                    </div>
-                    <svg className="demo-zone" viewBox="0 0 100 100" preserveAspectRatio="none">
-                      <polygon points="4,58 42,52 45,94 2,96" />
-                    </svg>
-                    <span className="demo-zone-label" style={{ top: '58%', left: '9%' }}>
-                      Zone A
-                    </span>
-                    <span className="demo-fps">32 FPS</span>
-                    <div className="demo-toast">
-                      <span className="demo-toast-dot" />
-                      Person #1 entered Zone A
-                    </div>
-                  </div>
-                </div>
-                <div className="demo-inspector">
-                  <div className="demo-stat-row">
-                    <div className="demo-stat">
-                      <b>2</b>
-                      <span>people</span>
-                    </div>
-                    <div className="demo-stat">
-                      <b>32</b>
-                      <span>fps</span>
-                    </div>
-                    <div className="demo-stat">
-                      <b>Ready</b>
-                      <span>status</span>
-                    </div>
-                  </div>
-                  <div className="demo-mini">
-                    <span className="demo-mini-title">Detection Zones</span>
-                    <div className="demo-mini-row">
-                      <span className="demo-dot demo-dot-warn" />
-                      Zone A · 14s
-                    </div>
-                  </div>
-                  <div className="demo-mini">
-                    <span className="demo-mini-title">Activity</span>
-                    <div className="demo-mini-row">
-                      <span className="demo-dot demo-dot-warn" />
-                      Person #1 entered Zone A
-                    </div>
-                    <div className="demo-mini-row">
-                      <span className="demo-dot demo-dot-info" />
-                      Person #2 exited Zone B
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </Reveal>
-
-        <section className="features">
-          <div className="feature-grid">
-            {FEATURES.map((f, i) => (
-              <Reveal key={f.title} delay={i * 80} className="feature-item">
-                <span className="feature-n">{f.n}</span>
-                <f.icon size={20} weight="bold" className="feature-icon" />
-                <h3>{f.title}</h3>
-                <p>{f.body}</p>
-              </Reveal>
-            ))}
           </div>
         </section>
 
-        <section className="workflow">
-          <Reveal>
-            <h2 className="section-title">From camera to activity insight.</h2>
-          </Reveal>
-          <div className="workflow-row">
-            {WORKFLOW.map((step, i) => (
-              <Reveal key={step.title} delay={i * 100} className="workflow-step">
-                <div className="workflow-head">
-                  <span className="workflow-n">{step.n}</span>
-                  <step.icon size={16} weight="bold" />
-                </div>
+        <div className="preview">
+          <div
+            ref={hero.ref}
+            className="preview-scale"
+            style={{ transform: `scale(${heroScale}) translateY(${heroTranslate}px)` }}
+          >
+            <DemoPanel stage={heroStage} className="preview-glow" />
+          </div>
+        </div>
+
+        <section className="demo-story" ref={demoStory.containerRef}>
+          <div className="demo-story-visual">
+            <DemoPanel stage={DEMO_STEPS[demoStory.active].stage} />
+          </div>
+          <div className="demo-story-steps">
+            {DEMO_STEPS.map((step, i) => (
+              <div
+                key={step.n}
+                ref={(el) => {
+                  demoStory.stepRefs.current[i] = el
+                }}
+                className={`demo-story-step ${demoStory.active === i ? 'is-active' : ''}`}
+              >
+                <span className="workflow-n">{step.n}</span>
                 <h3>{step.title}</h3>
                 <p>{step.body}</p>
-                {i < WORKFLOW.length - 1 && <ArrowRight className="workflow-arrow" size={16} weight="bold" />}
-              </Reveal>
+              </div>
             ))}
           </div>
         </section>
 
         <section className="privacy">
-          <div className="privacy-grid">
-            <Reveal className="privacy-copy">
-              <h2 className="section-title section-title-left">Your footage stays on your device.</h2>
-              <p>
-                Every frame is analyzed in the same browser tab that captured it. Pose estimation, zone logic, and
-                event detection all run locally — nothing is uploaded or streamed to a server.
-              </p>
-              <ul className="privacy-points">
-                {PRIVACY_POINTS.map((point) => (
-                  <li key={point}>
-                    <CheckCircle size={15} weight="fill" />
-                    {point}
-                  </li>
-                ))}
-              </ul>
-            </Reveal>
-            <Reveal delay={80} className="privacy-diagram">
-              {ARCHITECTURE.map((step, i) => (
-                <div key={step} className="diagram-row">
-                  <span className="diagram-box">{step}</span>
-                  {i < ARCHITECTURE.length - 1 && <ArrowRight size={14} weight="bold" className="diagram-arrow" />}
-                </div>
-              ))}
-            </Reveal>
-          </div>
+          <Reveal>
+            <h2 className="section-title">Your footage stays in your browser.</h2>
+            <p className="privacy-sub">
+              Video analysis runs locally through the browser without requiring footage to be sent to an external
+              processing server.
+            </p>
+          </Reveal>
+          <Reveal delay={80} className="privacy-diagram">
+            {ARCHITECTURE.map((step, i) => (
+              <div key={step} className="diagram-row">
+                <span className="diagram-box">{step}</span>
+                {i < ARCHITECTURE.length - 1 && <span className="diagram-line" />}
+              </div>
+            ))}
+          </Reveal>
         </section>
 
         <section className="cta-banner">
-          <Reveal>
+          <div className="cta-banner-bg" aria-hidden="true">
+            <DemoPanel stage={5} />
+          </div>
+          <Reveal className="cta-banner-content">
             <h2>See the analyzer in action.</h2>
-            <p>Open the live workspace and test pose tracking, zones, and activity detection.</p>
+            <p>Test real-time tracking, detection zones and activity monitoring directly in your browser.</p>
             <Link className="btn-cta btn-cta-lg" to="/app">
               Launch Analyzer
               <ArrowRight size={16} weight="bold" />
