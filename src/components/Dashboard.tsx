@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import {
   MapPinArea,
@@ -85,9 +85,32 @@ export default function Dashboard({
     people: false,
     events: false,
   })
+  // Switching quality mid-load abandons the model currently downloading —
+  // worth a confirmation since that's real bytes/time thrown away, unlike a
+  // normal switch once a model is already loaded. Cleared automatically if
+  // loading finishes (or the target changes) before the user decides.
+  const [pendingQuality, setPendingQuality] = useState<DetectionQuality | null>(null)
+
+  useEffect(() => {
+    if (!modelLoading) setPendingQuality(null)
+  }, [modelLoading])
 
   function toggle(key: SectionKey) {
     setCollapsed((prev) => ({ ...prev, [key]: !prev[key] }))
+  }
+
+  function handleQualityClick(value: DetectionQuality) {
+    if (value === quality) return
+    if (modelLoading) {
+      setPendingQuality(value)
+      return
+    }
+    onQualityChange(value)
+  }
+
+  function confirmSwitch() {
+    if (pendingQuality) onQualityChange(pendingQuality)
+    setPendingQuality(null)
   }
 
   return (
@@ -130,13 +153,29 @@ export default function Dashboard({
             <button
               key={opt.value}
               className={quality === opt.value ? 'active' : ''}
-              onClick={() => onQualityChange(opt.value)}
-              disabled={modelLoading && quality !== opt.value}
+              onClick={() => handleQualityClick(opt.value)}
+              title={modelLoading && quality !== opt.value ? `Switch to ${opt.label} (cancels current load)` : undefined}
             >
               {opt.label}
             </button>
           ))}
         </div>
+        {pendingQuality && (
+          <div className="switch-confirm">
+            <span>
+              Still loading {QUALITY_OPTIONS.find((o) => o.value === quality)?.label}. Switch to{' '}
+              {QUALITY_OPTIONS.find((o) => o.value === pendingQuality)?.label} now and cancel it?
+            </span>
+            <div className="switch-confirm-actions">
+              <button className="btn btn-sm active" onClick={confirmSwitch}>
+                Switch now
+              </button>
+              <button className="btn btn-sm" onClick={() => setPendingQuality(null)}>
+                Keep waiting
+              </button>
+            </div>
+          </div>
+        )}
         <p className="panel-note">
           High trades speed for accuracy on small or overlapping people.
           <span className="info-tooltip" tabIndex={0}>
