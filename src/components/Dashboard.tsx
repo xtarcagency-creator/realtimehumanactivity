@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import {
   MapPinArea,
@@ -98,6 +98,14 @@ export default function Dashboard({
   // normal switch once a model is already loaded. Cleared automatically if
   // loading finishes (or the target changes) before the user decides.
   const [pendingQuality, setPendingQuality] = useState<DetectionQuality | null>(null)
+  // The very first "loading" a page load ever sees is the default tier
+  // auto-preloading before the user has touched anything — abandoning that
+  // costs nothing worth confirming, so only gate switches that would
+  // interrupt a load the user themselves explicitly chose. Without this, a
+  // click on a different tier while the default is still warming up just
+  // silently opened a confirmation box instead of switching, which looked
+  // identical to the click doing nothing at all.
+  const hasSwitchedRef = useRef(false)
 
   useEffect(() => {
     if (!modelLoading) setPendingQuality(null)
@@ -109,10 +117,11 @@ export default function Dashboard({
 
   function handleQualityClick(value: DetectionQuality) {
     if (value === quality) return
-    if (modelLoading) {
+    if (modelLoading && hasSwitchedRef.current) {
       setPendingQuality(value)
       return
     }
+    hasSwitchedRef.current = true
     onQualityChange(value)
   }
 
