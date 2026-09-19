@@ -55,10 +55,12 @@ function getBottomUpDetector(quality: BottomUpQuality, onProgress?: (fraction: n
 }
 
 /**
- * Fast/Balanced: single-pass MoveNet MultiPose over the whole frame.
- * High: top-down pipeline (person detector + per-person crop through MoveNet
- * Thunder) — much more accurate when people are small, close together, or
- * overlapping (e.g. low-res CCTV-style footage), at a real FPS cost.
+ * Fast/Balanced: single-pass MoveNet MultiPose over the whole frame
+ * (WebGL). High: single-pass YOLO26n-pose (see topDownPose.ts /
+ * yolo26PoseDetector.ts) — a heavier, more accurate model that holds up
+ * better when people are small, close together, or overlapping (e.g.
+ * low-res CCTV-style footage), at a real FPS cost. Pure ONNX Runtime/WASM,
+ * no WebGL involved.
  */
 export async function estimatePoses(video: HTMLVideoElement, quality: DetectionQuality): Promise<Pose[]> {
   if (quality === 'high') {
@@ -73,12 +75,11 @@ export function resetTracking() {
 }
 
 /**
- * Always runs the full top-down ensemble pipeline, uncapped and with a
- * forced fresh box detection, regardless of the currently selected quality
- * tier — meant for inspecting a single paused frame, where there's no
- * real-time FPS budget to protect. Loads the top-down models on first use if
- * the active quality tier hasn't already warmed them (a real, one-time delay
- * on Fast/Balanced the first time someone pauses).
+ * Always runs YOLO26n-pose uncapped, regardless of the currently selected
+ * quality tier — meant for inspecting a single paused frame, where there's
+ * no real-time FPS budget to protect. Loads the model on first use if the
+ * active quality tier hasn't already warmed it (a real, one-time delay on
+ * Fast/Balanced the first time someone pauses).
  */
 export async function estimateDetailedPoses(video: HTMLVideoElement): Promise<Pose[]> {
   await preloadTopDownModels()
@@ -93,12 +94,10 @@ export async function estimateDetailedPoses(video: HTMLVideoElement): Promise<Po
  */
 export async function preloadModels(quality: DetectionQuality, onProgress?: (fraction: number) => void): Promise<void> {
   if (quality === 'high') {
-    // Switching to High never disposed the Fast/Balanced detector still
-    // sitting on the GPU — its WebGL textures stayed allocated while High
-    // then tried to compile two more MoveNet models on top of it (plus
-    // YOLO's WASM module) all at once. That real resource contention is the
-    // most likely cause of High's model-init step genuinely hanging instead
-    // of just being slow: free it first.
+    // Free the Fast/Balanced detector's WebGL resources before switching —
+    // High itself no longer touches WebGL at all (pure ONNX Runtime/WASM,
+    // see yolo26PoseDetector.ts), but there's no reason to leave a model's
+    // GPU memory allocated once it's no longer the active tier.
     if (bottomUpCurrent) {
       const stale = bottomUpCurrent
       bottomUpCurrent = null

@@ -3,26 +3,23 @@ import '@tensorflow/tfjs-backend-webgl'
 import * as poseDetection from '@tensorflow-models/pose-detection'
 import { fetchBuffer, type ProgressReporter } from './downloadProgress'
 
-// MoveNet weights, bundled locally — same as YOLO (see yoloDetector.ts) and
-// for the same reason: no runtime dependency on a model-hosting CDN. These
-// otherwise default to fetching from tfhub.dev on every cold load, which is
-// what made switching to High (which loads two MoveNet variants on top of
-// YOLO) noticeably slow to warm up, especially on a slow/blocked path to
-// that CDN. Re-hosted by the TF.js community (vladmandic/human-models,
+// MoveNet MultiPose weights, bundled locally — used by Fast/Balanced (a
+// single pass over the whole frame). High no longer uses MoveNet at all
+// (see topDownPose.ts/yolo26PoseDetector.ts) — bundled for the same reason
+// as everything else in this project: no runtime dependency on a
+// model-hosting CDN. This otherwise defaults to fetching from tfhub.dev on
+// every cold load. Re-hosted by the TF.js community (vladmandic/human-models,
 // itself just a re-conversion of the same original Google MoveNet weights —
 // same modelType/version, confirmed via each file's own `generatedBy` field
 // pointing at the exact tfhub.dev URLs this project used to load from
 // directly) since tfhub.dev isn't reachable from every network.
 export const MOVENET_MULTIPOSE_LIGHTNING_URL = '/models/movenet-multipose.json'
-export const MOVENET_SINGLEPOSE_THUNDER_URL = '/models/movenet-thunder.json'
 
-// Exact sizes of the bundled files above, used only as a progress-bar
+// Exact size of the bundled file above, used only as a progress-bar
 // fallback (see warmMoveNetWeights/fetchBuffer) when a CDN drops
-// Content-Length in flight. Update these if the model files themselves are
-// ever replaced.
+// Content-Length in flight. Update if the model file is ever replaced.
 const MOVENET_FILE_SIZES: Record<string, { json: number; bin: number }> = {
   [MOVENET_MULTIPOSE_LIGHTNING_URL]: { json: 240464, bin: 9448838 },
-  [MOVENET_SINGLEPOSE_THUNDER_URL]: { json: 161923, bin: 12477112 },
 }
 
 // WebGPU was tried here and reverted: its video-frame import

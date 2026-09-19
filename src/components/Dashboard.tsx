@@ -27,7 +27,7 @@ const QUALITY_OPTIONS: { value: DetectionQuality; label: string }[] = [
 ]
 
 const QUALITY_DETAIL =
-  'Fast/Balanced scan the whole frame at once. High switches to a per-person pipeline (detect each person, then a sharper pose model on just their crop) — much better for small, close, or overlapping people (e.g. CCTV footage), at a real FPS cost. First use of High downloads the model (~40MB), cached after.'
+  'Fast/Balanced use a lightweight model tuned for speed. High switches to a heavier, more accurate model — much better for small, close, or overlapping people (e.g. CCTV footage), at a real FPS cost. First use of High downloads the model (~12MB), cached after.'
 
 function formatDwell(sec: number): string {
   if (sec < 60) return `${Math.floor(sec)}s`

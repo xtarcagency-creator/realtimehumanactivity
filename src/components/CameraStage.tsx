@@ -15,7 +15,6 @@ import {
 } from '@phosphor-icons/react'
 import { estimatePoses, estimateDetailedPoses, preloadModels, resetTracking } from '../lib/pose'
 import type { Pose } from '../lib/pose'
-import { getPendingLoadSteps } from '../lib/topDownPose'
 import { classifyActivity, getCentroid, pushHistory } from '../lib/activity'
 import {
   pointInZone,
@@ -165,19 +164,18 @@ export default function CameraStage({
     onModelLoadingChange(true)
     onModelLoadProgress(0)
     onModelLoadError(null)
-    // A flat deadline from the start of the whole load was wrong: High
-    // pulls ~90MB combined (YOLO + its wasm runtime + two MoveNet models),
-    // and on a slower connection that alone can take longer than any
-    // reasonable fixed cap — a load that's genuinely still progressing byte
-    // by byte isn't stuck, it's just slow, and shouldn't be killed for it.
-    // What actually indicates a real hang is bytes no longer arriving, or
-    // the post-download compile step (which has no progress signal of its
-    // own — parsing each model's graph, uploading weights to WebGL,
-    // compiling the wasm module) running far longer than that step should
-    // reasonably take on working hardware. So: watch for a stall in
-    // progress during the download phase, and cap only the untracked
-    // compile phase once downloads are done — never the download phase
-    // itself, which can take as long as the connection needs.
+    // A flat deadline from the start of the whole load was wrong: on a
+    // slower connection, even a model that's still downloading steadily can
+    // take longer than any reasonable fixed cap — that's not stuck, it's
+    // just slow, and shouldn't be killed for it. What actually indicates a
+    // real hang is bytes no longer arriving, or the post-download compile
+    // step (which has no progress signal of its own — WASM instantiation
+    // for High, WebGL graph parsing/texture upload for Fast/Balanced)
+    // running far longer than that step should reasonably take on working
+    // hardware. So: watch for a stall in progress during the download
+    // phase, and cap only the untracked compile phase once downloads are
+    // done — never the download phase itself, which can take as long as
+    // the connection needs.
     const DOWNLOAD_STALL_MS = 20000
     const COMPILE_PHASE_MS = 30000
     let lastProgressAt = performance.now()
@@ -193,11 +191,9 @@ export default function CameraStage({
           return
         }
         if (enteredCompilePhase && now - compilePhaseStartedAt > COMPILE_PHASE_MS) {
-          const pending = getPendingLoadSteps()
-          const stuckOn = pending.length ? ` Stuck on: ${pending.join(', ')}.` : ''
           reject(
             new Error(
-              `Timed out initializing the ${quality} model — downloads finished but setup didn't complete after ${COMPILE_PHASE_MS / 1000}s.${stuckOn}`,
+              `Timed out initializing the ${quality} model — downloads finished but setup didn't complete after ${COMPILE_PHASE_MS / 1000}s.`,
             ),
           )
           return
@@ -345,9 +341,9 @@ export default function CameraStage({
 
       setStatus('')
 
-      // Paused, there's no real-time FPS budget to protect — run the full
-      // top-down ensemble uncapped with a forced-fresh box detection on just
-      // this one frame, instead of the live loop's throttled/capped pass.
+      // Paused, there's no real-time FPS budget to protect — run YOLO26n-pose
+      // uncapped on just this one frame, instead of the live loop's capped
+      // pass.
       // Superseded (via inspectToken) by a newer pause/seek before it
       // resolves, so a slow inspection can't clobber a fresher one.
       let inspectToken = 0
