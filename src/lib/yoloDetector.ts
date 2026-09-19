@@ -1,4 +1,15 @@
-import * as ort from 'onnxruntime-web'
+// The wasm-only entry point, not the bare 'onnxruntime-web' package — the
+// default import bundles WebGPU (JSEP) support unconditionally, which pulls
+// in its own ~28MB wasm runtime binary regardless of which
+// executionProviders are actually requested at runtime (the binary is fixed
+// by which JS entry point gets imported, not by the runtime option below).
+// Since only 'wasm' is ever used (see the note further down), this entry
+// point ships the plain ~14MB runtime instead — half the size, and it was
+// the real reason the progress bar looked "stuck": that runtime is fetched
+// by ORT itself inside InferenceSession.create(), entirely outside our own
+// tracked download, so a bigger untracked file just meant a longer stall
+// with no visible progress after our own bytes finished.
+import * as ort from 'onnxruntime-web/wasm'
 import { fetchBuffer, type ProgressReporter } from './downloadProgress'
 
 // YOLO11s (COCO), exported to ONNX at 640x640 input, bundled locally at
@@ -15,6 +26,14 @@ const MODEL_URL = '/models/yolo11s.onnx'
 // fallback (see fetchBuffer) when a CDN drops Content-Length in flight.
 // Update if the model file is ever replaced.
 const MODEL_EXPECTED_BYTES = 38051718
+// ONNX Runtime's own wasm runtime, bundled locally here (copied from
+// node_modules/onnxruntime-web/dist/) instead of left for ORT to fetch
+// itself from wherever it resolves relative to its own script — same
+// reasoning as the model file above, and it lets this download join the
+// same tracked progress instead of being an invisible stall after our own
+// bytes finish (see loadWasmBinary below).
+const WASM_URL = '/models/ort-wasm-simd-threaded.wasm'
+const WASM_EXPECTED_BYTES = 14239897
 const INPUT_SIZE = 640
 const PERSON_CLASS_INDEX = 0 // COCO class 0 = person
 // Lowered from 0.25 — this is only the primary detector; MultiPose's own box
@@ -36,12 +55,22 @@ export interface YoloBox {
 let sessionPromise: Promise<ort.InferenceSession> | null = null
 let letterboxCanvas: HTMLCanvasElement | null = null
 
+let wasmBinaryPromise: Promise<ArrayBuffer> | null = null
+
+function loadWasmBinary(reporter?: ProgressReporter): Promise<ArrayBuffer> {
+  if (!wasmBinaryPromise) {
+    wasmBinaryPromise = fetchBuffer(WASM_URL, 'yolo-wasm', reporter, WASM_EXPECTED_BYTES)
+  }
+  return wasmBinaryPromise
+}
+
 function getSession(reporter?: ProgressReporter): Promise<ort.InferenceSession> {
   if (!sessionPromise) {
-    // Fetched as a plain ArrayBuffer ourselves (see downloadProgress.ts) so
-    // real download progress is available, then handed to ORT directly —
-    // InferenceSession.create accepts a buffer as well as a URL, so this
-    // doesn't cost a second fetch.
+    // Both the model and ORT's own wasm runtime are fetched as plain
+    // ArrayBuffers ourselves (see downloadProgress.ts) so real download
+    // progress is available for the whole thing, then handed to ORT
+    // directly — InferenceSession.create/env.wasm.wasmBinary both accept a
+    // buffer, so neither of these costs a second fetch.
     //
     // WASM only. WebGPU was tried here too and dropped: ONNX Runtime's
     // WebGPU backend needs its own much larger wasm binary (~28MB vs ~14MB
@@ -50,9 +79,13 @@ function getSession(reporter?: ProgressReporter): Promise<ort.InferenceSession> 
     // measured speed benefit, and this project already hit real WebGPU
     // reliability problems elsewhere (see tfBackend.ts). Not worth paying
     // the extra download for an unproven win.
-    sessionPromise = fetchBuffer(MODEL_URL, 'yolo', reporter, MODEL_EXPECTED_BYTES).then((buf) =>
-      ort.InferenceSession.create(buf, { executionProviders: ['wasm'] }),
-    )
+    sessionPromise = Promise.all([
+      fetchBuffer(MODEL_URL, 'yolo', reporter, MODEL_EXPECTED_BYTES),
+      loadWasmBinary(reporter),
+    ]).then(([modelBuf, wasmBuf]) => {
+      ort.env.wasm.wasmBinary = wasmBuf
+      return ort.InferenceSession.create(modelBuf, { executionProviders: ['wasm'] })
+    })
   }
   return sessionPromise
 }
