@@ -151,17 +151,17 @@
   align-items: center;
   justify-content: center;
   white-space: nowrap;
-  gap: 8px;
-  height: 52px;
-  padding: 0 24px;
+  gap: 7px;
+  height: 40px;
+  padding: 0 18px;
   background: #f5f7f8;
   color: #0b1117;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
-  border-radius: 12px;
+  border-radius: 9px;
   text-decoration: none;
   border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.18);
   transition: background 160ms ease, color 160ms ease, transform 120ms ease, box-shadow 160ms ease;
 }
 
@@ -182,17 +182,17 @@
 }
 
 .btn-cta-sm {
-  height: 44px;
-  padding: 0 20px;
-  border-radius: 12px;
-  font-size: 13.5px;
+  height: 34px;
+  padding: 0 14px;
+  border-radius: 8px;
+  font-size: 12.5px;
   font-weight: 600;
 }
 
 .btn-cta-lg {
-  height: 56px;
-  padding: 0 28px;
-  font-size: 15px;
+  height: 44px;
+  padding: 0 20px;
+  font-size: 14px;
 }
 
 .btn-ghost {
@@ -200,13 +200,13 @@
   align-items: center;
   justify-content: center;
   gap: 7px;
-  height: 52px;
-  padding: 0 20px;
+  height: 40px;
+  padding: 0 16px;
   background: transparent;
   color: #e7edf3;
   font-size: 13px;
   font-weight: 500;
-  border-radius: 12px;
+  border-radius: 9px;
   border: 1px solid #26313a;
   text-decoration: none;
   transition: border-color 160ms ease, color 160ms ease, background 160ms ease;
