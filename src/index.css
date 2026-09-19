@@ -1,0 +1,82 @@
+:root {
+  --bg: #0a0d12;
+  --header: #0a0d12;
+  --panel: #0f141b;
+  --panel-2: #12181f;
+  --panel-3: #151c24;
+  --border: #222b36;
+  --border-strong: #2c3742;
+  --text: #98a2b3;
+  --text-h: #f3f6fa;
+  --muted: #667085;
+
+  /* Primary interaction — active controls, selected tabs, primary CTAs.
+     Muted slate-teal, not a bright SaaS blue — the brand no longer carries
+     its own accent color; this is the interface's only accent. */
+  --primary: #3e6b73;
+  --primary-hover: #4a7a83;
+  --primary-soft: #1a2b30;
+
+  /* Computer-vision / tracking data — bounding boxes, skeletons, zones. */
+  --track: #22b8cf;
+  --track-soft: rgba(34, 184, 207, 0.12);
+
+  --warn: #d05c45;
+  --warn-soft: rgba(208, 92, 69, 0.12);
+  --amber: #c58b2a;
+  --amber-soft: rgba(197, 139, 42, 0.12);
+  --good: #2f8f5b;
+  --good-soft: rgba(47, 143, 91, 0.12);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.4);
+  --radius: 11px;
+  --radius-sm: 8px;
+
+  font: 14px/1.5 'Geist Sans', -apple-system, system-ui, 'Segoe UI', Roboto, sans-serif;
+  color-scheme: dark;
+  color: var(--text);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100svh;
+}
+
+button {
+  font: inherit;
+}
+
+.route-loading {
+  min-height: 100svh;
+  background: var(--bg);
+}
+
+::selection {
+  background: var(--primary-soft);
+  color: var(--text-h);
+}
+
+/* thin, unobtrusive scrollbars for the event log / narrow lists */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 8px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}

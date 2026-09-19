@@ -1,0 +1,29 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Permissions-Policy = "camera=*, microphone=()"
+    # Cross-origin isolation, so onnxruntime-web's WASM backend (YOLO, High
+    # quality) can use SharedArrayBuffer and run multi-threaded instead of a
+    # single thread. "credentialless" (not the stricter "require-corp")
+    # because the MoveNet model weights are fetched from a third-party CDN
+    # that sends CORS headers but no Cross-Origin-Resource-Policy header —
+    # require-corp would block that fetch entirely and break every quality
+    # tier, not just High. Tried once before and reverted alongside an
+    # unrelated WebGPU bug that turned out to be the actual cause of that
+    # incident (see tfBackend.ts history) — re-adding on its own merits.
+    Cross-Origin-Opener-Policy = "same-origin"
+    Cross-Origin-Embedder-Policy = "credentialless"
+
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
