@@ -14,6 +14,7 @@ import {
   CornersIn,
 } from '@phosphor-icons/react'
 import { estimatePoses, estimateDetailedPoses, preloadModels, resetTracking } from '../lib/pose'
+import type { Pose } from '../lib/pose'
 import { classifyActivity, getCentroid, pushHistory } from '../lib/activity'
 import {
   pointInZone,
@@ -105,6 +106,11 @@ export default function CameraStage({
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const stageFrameRef = useRef<HTMLDivElement>(null)
   const peopleRef = useRef<Map<number, TrackedPerson>>(new Map())
+  // Raw keypoints per tracked id, kept separately from TrackedPerson (whose
+  // shape is shared with the dashboard/events UI). The draw loop below runs
+  // independently of inference now, so it needs somewhere to read the last
+  // known skeleton from on ticks where inference hasn't produced a new one.
+  const keypointsRef = useRef<Map<number, Pose['keypoints']>>(new Map())
   const zonesRef = useRef(zones)
   const qualityRef = useRef(quality)
   const loiterThresholdRef = useRef(loiterThresholdSec)
@@ -181,6 +187,7 @@ export default function CameraStage({
     let stream: MediaStream | null = null
     let objectUrl: string | null = null
     let raf = 0
+    let inferRaf = 0
     let stopped = false
     let lastFrameTime = performance.now()
     let lastLoggedPoseCount = -1
@@ -194,6 +201,7 @@ export default function CameraStage({
       canvas.width = CANVAS_W
       canvas.height = CANVAS_H
       peopleRef.current = new Map()
+      keypointsRef.current = new Map()
 
       if (!running) {
         setStatus('Feed stopped')
@@ -265,8 +273,14 @@ export default function CameraStage({
       // Superseded (via inspectToken) by a newer pause/seek before it
       // resolves, so a slow inspection can't clobber a fresher one.
       let inspectToken = 0
+      // Mirrors `inspecting` React state into a plain variable the draw loop
+      // (a non-reactive rAF callback) can read synchronously every tick,
+      // so it knows to leave this function's own canvas render alone
+      // instead of immediately overdrawing it with the live video+overlay.
+      let isInspecting = false
       const inspectPausedFrame = async () => {
         const token = ++inspectToken
+        isInspecting = true
         setInspecting(true)
         try {
           const poses = await estimateDetailedPoses(video)
@@ -304,7 +318,10 @@ export default function CameraStage({
         } catch (err) {
           console.error('[CameraStage] paused-frame inspection failed', err)
         } finally {
-          if (token === inspectToken) setInspecting(false)
+          if (token === inspectToken) {
+            isInspecting = false
+            setInspecting(false)
+          }
         }
       }
 
@@ -315,6 +332,7 @@ export default function CameraStage({
           // Invalidate any inspection still in flight so a slow analysis
           // can't land after playback resumed and overwrite a live frame.
           inspectToken++
+          isInspecting = false
           setInspecting(false)
         }
         const handlePause = () => {
@@ -324,11 +342,10 @@ export default function CameraStage({
         const handleSeeked = () => {
           if (video.paused) {
             inspectPausedFrame()
-          } else {
-            // redraw immediately so scrubbing while playing has no visible gap
-            ctx.clearRect(0, 0, canvas.width, canvas.height)
-            ctx.drawImage(video, cover.sx, cover.sy, cover.sw, cover.sh, 0, 0, canvas.width, canvas.height)
           }
+          // While playing, the always-on draw loop below picks up the new
+          // frame on its next tick (~16ms) — no manual redraw needed here
+          // anymore now that drawing isn't gated behind inference.
         }
         video.addEventListener('timeupdate', handleTimeUpdate)
         video.addEventListener('play', handlePlay)
@@ -345,28 +362,131 @@ export default function CameraStage({
         }
       }
 
+      // ---- Rendering: reads only the *latest already-known* tracked-people
+      // and zone state — never runs a model, never awaits anything. This is
+      // what decouples visible video smoothness from inference speed: the
+      // draw loop below runs every animation frame regardless of how fast
+      // (or slow) the inference loop further down is currently completing.
+      const drawOverlays = () => {
+        const people = Array.from(peopleRef.current.values())
+
+        for (const person of people) {
+          const keypoints = keypointsRef.current.get(person.id)
+          const color = ACTIVITY_COLORS[person.activity] ?? '#94a3b8'
+          if (keypoints && overlayModeRef.current === 'full') {
+            ctx.strokeStyle = color
+            ctx.lineWidth = 5 * DRAW_SCALE
+            for (const [a, b] of SKELETON_EDGES) {
+              const ka = keypoints.find((k) => k.name === a)
+              const kb = keypoints.find((k) => k.name === b)
+              if (ka && kb && (ka.score ?? 0) > 0.3 && (kb.score ?? 0) > 0.3) {
+                const pa = mapPointCover(ka, cover)
+                const pb = mapPointCover(kb, cover)
+                ctx.beginPath()
+                ctx.moveTo(pa.x, pa.y)
+                ctx.lineTo(pb.x, pb.y)
+                ctx.stroke()
+              }
+            }
+            for (const k of keypoints) {
+              if ((k.score ?? 0) > 0.3) {
+                const pk = mapPointCover(k, cover)
+                ctx.beginPath()
+                ctx.arc(pk.x, pk.y, 6 * DRAW_SCALE, 0, Math.PI * 2)
+                ctx.fillStyle = color
+                ctx.fill()
+              }
+            }
+          } else {
+            // minimal mode (or no keypoints yet): just a marker at the person's tracked position
+            ctx.beginPath()
+            ctx.arc(person.centroid.x, person.centroid.y, 7 * DRAW_SCALE, 0, Math.PI * 2)
+            ctx.fillStyle = color
+            ctx.fill()
+          }
+          const label = `#${person.id} ${person.activity}`
+          ctx.font = `bold ${22 * DRAW_SCALE}px system-ui, sans-serif`
+          const labelX = person.centroid.x + 12 * DRAW_SCALE
+          const labelY = person.centroid.y - 14 * DRAW_SCALE
+          const labelW = ctx.measureText(label).width
+          ctx.fillStyle = 'rgba(0,0,0,0.55)'
+          ctx.fillRect(labelX - 6 * DRAW_SCALE, labelY - 22 * DRAW_SCALE, labelW + 12 * DRAW_SCALE, 30 * DRAW_SCALE)
+          ctx.fillStyle = color
+          ctx.fillText(label, labelX, labelY)
+        }
+
+        for (const zone of zonesRef.current) {
+          if (zone.points.length < MIN_ZONE_POINTS) continue
+          const occupied = people.some((p) => (p.zoneDwell[zone.id] ?? 0) > 0)
+          const zoneColor = occupied ? '#c58b2a' : '#22b8cf'
+          ctx.strokeStyle = zoneColor
+          ctx.fillStyle = occupied ? 'rgba(197,139,42,0.12)' : 'rgba(34,184,207,0.1)'
+          ctx.lineWidth = 3 * DRAW_SCALE
+          ctx.beginPath()
+          zone.points.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)))
+          ctx.closePath()
+          ctx.fill()
+          ctx.stroke()
+
+          const c = zoneCentroid(zone)
+          ctx.font = `bold ${18 * DRAW_SCALE}px system-ui, sans-serif`
+          const labelW = ctx.measureText(zone.label).width
+          ctx.fillStyle = zoneColor
+          ctx.fillText(zone.label, c.x - labelW / 2, c.y)
+        }
+      }
+
       // A frame that throws (a transient inference hiccup, a decode error) must
       // not permanently kill the loop — without the try/catch below, that
-      // exception happened before the final requestAnimationFrame(loop) call
-      // at the bottom, so the loop simply stopped scheduling itself forever:
-      // the canvas froze on the last successfully drawn frame while the
-      // <video> element itself, whose playback isn't tied to this loop at
-      // all, kept right on playing — exactly the "video plays but the frame
-      // is stuck" symptom this fixes.
-      const processFrame = async () => {
+      // exception happened before the final requestAnimationFrame call at the
+      // bottom, so the loop simply stopped scheduling itself forever: the
+      // canvas froze on the last successfully drawn frame while the <video>
+      // element itself, whose playback isn't tied to this loop at all, kept
+      // right on playing — exactly the "video plays but the frame is stuck"
+      // symptom this fixes.
+      const drawLoop = () => {
+        if (stopped) return
+        // While a paused-frame inspection is computing/showing, its own
+        // render owns the canvas — drawing here would just immediately
+        // overwrite it with the plain video + stale overlays every tick.
+        if (!isInspecting) {
+          try {
+            ctx.save()
+            ctx.clearRect(0, 0, canvas.width, canvas.height)
+            ctx.drawImage(video, cover.sx, cover.sy, cover.sw, cover.sh, 0, 0, canvas.width, canvas.height)
+            drawOverlays()
+            ctx.restore()
+          } catch (err) {
+            console.error('[CameraStage] draw frame failed, retrying next frame', err)
+            // restore() on an empty/already-balanced stack is a documented
+            // no-op, so this is always safe to call even if the failure
+            // happened between save() and restore() above.
+            ctx.restore()
+          }
+        }
+        raf = requestAnimationFrame(drawLoop)
+      }
+
+      // ---- Inference: runs on its own rAF-gated cadence, independent of the
+      // draw loop above. `inferenceBusy` guarantees at most one estimatePoses
+      // call in flight at a time — if a pass is still running when the next
+      // tick arrives, that tick just no-ops and checks again next frame.
+      // Nothing is ever queued: whenever a pass finishes, the *next* tick
+      // reads whatever the video's current frame is by then, so slow
+      // inference means fewer, freshest updates rather than a growing
+      // backlog of stale ones.
+      let inferenceBusy = false
+      const runInferencePass = async () => {
         const now = performance.now()
         const dt = (now - lastFrameTime) / 1000
         lastFrameTime = now
 
         const poses = await estimatePoses(video, qualityRef.current)
+        if (stopped) return
         if (poses.length !== lastLoggedPoseCount) {
           console.info(`[detect] ${qualityRef.current}: ${poses.length} pose(s) this frame`, poses)
           lastLoggedPoseCount = poses.length
         }
-
-        ctx.save()
-        ctx.clearRect(0, 0, canvas.width, canvas.height)
-        ctx.drawImage(video, cover.sx, cover.sy, cover.sw, cover.sh, 0, 0, canvas.width, canvas.height)
 
         const seenIds = new Set<number>()
 
@@ -457,79 +577,15 @@ export default function CameraStage({
             history,
           }
           peopleRef.current.set(id, person)
-
-          const color = ACTIVITY_COLORS[activity] ?? '#94a3b8'
-          if (overlayModeRef.current === 'full') {
-            // draw skeleton
-            ctx.strokeStyle = color
-            ctx.lineWidth = 5 * DRAW_SCALE
-            for (const [a, b] of SKELETON_EDGES) {
-              const ka = pose.keypoints.find((k) => k.name === a)
-              const kb = pose.keypoints.find((k) => k.name === b)
-              if (ka && kb && (ka.score ?? 0) > 0.3 && (kb.score ?? 0) > 0.3) {
-                const pa = mapPointCover(ka, cover)
-                const pb = mapPointCover(kb, cover)
-                ctx.beginPath()
-                ctx.moveTo(pa.x, pa.y)
-                ctx.lineTo(pb.x, pb.y)
-                ctx.stroke()
-              }
-            }
-            for (const k of pose.keypoints) {
-              if ((k.score ?? 0) > 0.3) {
-                const pk = mapPointCover(k, cover)
-                ctx.beginPath()
-                ctx.arc(pk.x, pk.y, 6 * DRAW_SCALE, 0, Math.PI * 2)
-                ctx.fillStyle = color
-                ctx.fill()
-              }
-            }
-          } else {
-            // minimal mode: just a marker at the person's tracked position
-            ctx.beginPath()
-            ctx.arc(canvasCentroid.x, canvasCentroid.y, 7 * DRAW_SCALE, 0, Math.PI * 2)
-            ctx.fillStyle = color
-            ctx.fill()
-          }
-          const label = `#${id} ${activity}`
-          ctx.font = `bold ${22 * DRAW_SCALE}px system-ui, sans-serif`
-          const labelX = canvasCentroid.x + 12 * DRAW_SCALE
-          const labelY = canvasCentroid.y - 14 * DRAW_SCALE
-          const labelW = ctx.measureText(label).width
-          ctx.fillStyle = 'rgba(0,0,0,0.55)'
-          ctx.fillRect(labelX - 6 * DRAW_SCALE, labelY - 22 * DRAW_SCALE, labelW + 12 * DRAW_SCALE, 30 * DRAW_SCALE)
-          ctx.fillStyle = color
-          ctx.fillText(label, labelX, labelY)
+          keypointsRef.current.set(id, pose.keypoints)
         }
 
         for (const [id, person] of Array.from(peopleRef.current)) {
           if (!seenIds.has(id) && now - person.lastSeen > STALE_PERSON_GRACE_MS) {
             peopleRef.current.delete(id)
+            keypointsRef.current.delete(id)
           }
         }
-
-        // draw zones
-        for (const zone of zonesRef.current) {
-          if (zone.points.length < MIN_ZONE_POINTS) continue
-          const occupied = Array.from(peopleRef.current.values()).some((p) => (p.zoneDwell[zone.id] ?? 0) > 0)
-          const zoneColor = occupied ? '#c58b2a' : '#22b8cf'
-          ctx.strokeStyle = zoneColor
-          ctx.fillStyle = occupied ? 'rgba(197,139,42,0.12)' : 'rgba(34,184,207,0.1)'
-          ctx.lineWidth = 3 * DRAW_SCALE
-          ctx.beginPath()
-          zone.points.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)))
-          ctx.closePath()
-          ctx.fill()
-          ctx.stroke()
-
-          const c = zoneCentroid(zone)
-          ctx.font = `bold ${18 * DRAW_SCALE}px system-ui, sans-serif`
-          const labelW = ctx.measureText(zone.label).width
-          ctx.fillStyle = zoneColor
-          ctx.fillText(zone.label, c.x - labelW / 2, c.y)
-        }
-
-        ctx.restore()
 
         onPeopleUpdate(Array.from(peopleRef.current.values()))
 
@@ -541,26 +597,21 @@ export default function CameraStage({
         }
       }
 
-      const loop = async () => {
+      const inferenceLoop = () => {
         if (stopped) return
-        if (video.paused || video.ended) {
-          raf = requestAnimationFrame(loop)
-          return
+        if (!inferenceBusy && !video.paused && !video.ended && !isInspecting) {
+          inferenceBusy = true
+          runInferencePass()
+            .catch((err) => console.error('[CameraStage] inference frame failed, retrying next frame', err))
+            .finally(() => {
+              inferenceBusy = false
+            })
         }
-        try {
-          await processFrame()
-        } catch (err) {
-          console.error('[CameraStage] detection frame failed, retrying next frame', err)
-          // processFrame may have thrown between ctx.save()/ctx.restore(),
-          // leaving the canvas state stack unbalanced — restore() on an
-          // empty/already-balanced stack is a documented no-op, so this is
-          // always safe to call.
-          ctx.restore()
-        }
-        if (stopped) return
-        raf = requestAnimationFrame(loop)
+        inferRaf = requestAnimationFrame(inferenceLoop)
       }
-      raf = requestAnimationFrame(loop)
+
+      raf = requestAnimationFrame(drawLoop)
+      inferRaf = requestAnimationFrame(inferenceLoop)
     }
 
     start()
@@ -568,6 +619,7 @@ export default function CameraStage({
     return () => {
       stopped = true
       cancelAnimationFrame(raf)
+      cancelAnimationFrame(inferRaf)
       detachPlaybackListeners?.()
       stream?.getTracks().forEach((t) => t.stop())
       if (objectUrl) URL.revokeObjectURL(objectUrl)
