@@ -164,25 +164,57 @@ export default function CameraStage({
     onModelLoadingChange(true)
     onModelLoadProgress(0)
     onModelLoadError(null)
-    // Once every tracked byte has downloaded, there's still real
-    // (untracked) work left — parsing each model's graph and uploading its
-    // weights to WebGL, plus compiling the WASM module — which has no
-    // progress signal of its own. Without a hard cap, a genuine hang in
-    // that step (a WebGL/backend issue, since downloads are now fully
-    // accounted for) would sit forever with zero feedback, indistinguishable
-    // from just being slow.
-    const LOAD_TIMEOUT_MS = 45000
-    const timeout = new Promise<never>((_, reject) => {
-      window.setTimeout(
-        () => reject(new Error(`Timed out initializing the ${quality} model after ${LOAD_TIMEOUT_MS / 1000}s.`)),
-        LOAD_TIMEOUT_MS,
-      )
+    // A flat deadline from the start of the whole load was wrong: High
+    // pulls ~90MB combined (YOLO + its wasm runtime + two MoveNet models),
+    // and on a slower connection that alone can take longer than any
+    // reasonable fixed cap — a load that's genuinely still progressing byte
+    // by byte isn't stuck, it's just slow, and shouldn't be killed for it.
+    // What actually indicates a real hang is bytes no longer arriving, or
+    // the post-download compile step (which has no progress signal of its
+    // own — parsing each model's graph, uploading weights to WebGL,
+    // compiling the wasm module) running far longer than that step should
+    // reasonably take on working hardware. So: watch for a stall in
+    // progress during the download phase, and cap only the untracked
+    // compile phase once downloads are done — never the download phase
+    // itself, which can take as long as the connection needs.
+    const DOWNLOAD_STALL_MS = 20000
+    const COMPILE_PHASE_MS = 30000
+    let lastProgressAt = performance.now()
+    let sawDownloadStart = false
+    let enteredCompilePhase = false
+    let compilePhaseStartedAt = 0
+    let watchdogTimer = 0
+    const stallWatchdog = new Promise<never>((_, reject) => {
+      const check = () => {
+        const now = performance.now()
+        if (!enteredCompilePhase && sawDownloadStart && now - lastProgressAt > DOWNLOAD_STALL_MS) {
+          reject(new Error(`Download stalled while loading the ${quality} model — no data received for ${DOWNLOAD_STALL_MS / 1000}s.`))
+          return
+        }
+        if (enteredCompilePhase && now - compilePhaseStartedAt > COMPILE_PHASE_MS) {
+          reject(
+            new Error(
+              `Timed out initializing the ${quality} model — downloads finished but setup didn't complete after ${COMPILE_PHASE_MS / 1000}s.`,
+            ),
+          )
+          return
+        }
+        watchdogTimer = window.setTimeout(check, 2000)
+      }
+      watchdogTimer = window.setTimeout(check, 2000)
     })
     Promise.race([
       preloadModels(quality, (fraction) => {
-        if (!cancelled) onModelLoadProgress(fraction)
+        if (cancelled) return
+        sawDownloadStart = true
+        lastProgressAt = performance.now()
+        if (fraction >= 0.99 && !enteredCompilePhase) {
+          enteredCompilePhase = true
+          compilePhaseStartedAt = performance.now()
+        }
+        onModelLoadProgress(fraction)
       }),
-      timeout,
+      stallWatchdog,
     ])
       .then(() => {
         if (!cancelled) onModelLoadProgress(1)
@@ -198,10 +230,12 @@ export default function CameraStage({
         }
       })
       .finally(() => {
+        window.clearTimeout(watchdogTimer)
         if (!cancelled) onModelLoadingChange(false)
       })
     return () => {
       cancelled = true
+      window.clearTimeout(watchdogTimer)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [quality, modelRetryToken])
