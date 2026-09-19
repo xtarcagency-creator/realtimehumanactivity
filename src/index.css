@@ -13,8 +13,8 @@
   /* Primary interaction — active controls, selected tabs, primary CTAs.
      Muted slate-teal, not a bright SaaS blue — the brand no longer carries
      its own accent color; this is the interface's only accent. */
-  --primary: #3e6b73;
-  --primary-hover: #4a7a83;
+  --primary: #4c8a93;
+  --primary-hover: #5b9ba5;
   --primary-soft: #1a2b30;
 
   /* Computer-vision / tracking data — bounding boxes, skeletons, zones. */
