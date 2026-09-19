@@ -12,19 +12,13 @@ import {
   VideoCameraSlash,
   CornersOut,
   CornersIn,
+  Sparkle,
 } from '@phosphor-icons/react'
 import { estimatePoses, estimateDetailedPoses, preloadModels, resetTracking } from '../lib/pose'
 import type { Pose } from '../lib/pose'
-import { classifyActivity, getCentroid, pushHistory } from '../lib/activity'
-import {
-  pointInZone,
-  zoneCentroid,
-  LINGER_THRESHOLD_RATIO,
-  ZONE_EXIT_GRACE_SEC,
-  ZONE_REVISIT_ALERT_COUNT,
-  MIN_ZONE_POINTS,
-  CLOSE_POINT_RADIUS_PX,
-} from '../lib/zones'
+import { processFrame } from '../lib/frameProcessor'
+import { analyzeVideo, findAnalyzedFrame, type AnalyzedFrame } from '../lib/videoAnalyzer'
+import { zoneCentroid, MIN_ZONE_POINTS, CLOSE_POINT_RADIUS_PX } from '../lib/zones'
 import { computeCoverTransform, mapPointCover } from '../lib/coverMap'
 import { ACTIVITY_COLORS } from '../lib/activityColors'
 import type { ActivityEvent, DetectionQuality, OverlayMode, Point, Source, TrackedPerson, Zone } from '../lib/types'
@@ -41,13 +35,6 @@ import type { ActivityEvent, DetectionQuality, OverlayMode, Point, Source, Track
 // canvas-space, stay stable across window resizes.
 const CANVAS_W = 1280
 const CANVAS_H = 720
-// A person can go briefly undetected (occlusion, a confidence dip, motion
-// blur) well within the tracker's own missed-frame tolerance, which still
-// recognizes them by the same id if they reappear. Wall-clock (not
-// frame-count) grace before dropping their zone-dwell state, so a single
-// missed detection doesn't wipe a loiter timer that the tracker itself
-// hasn't given up on.
-const STALE_PERSON_GRACE_MS = 1200
 // Drawing sizes below were tuned at a 1280-wide reference canvas; scale them
 // with the actual canvas width so the overlay stays legible at any resolution.
 const DRAW_SCALE = CANVAS_W / 1280
@@ -133,6 +120,17 @@ export default function CameraStage({
   const [retryTick, setRetryTick] = useState(0)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [resolution, setResolution] = useState<{ w: number; h: number } | null>(null)
+  const [analyzing, setAnalyzing] = useState(false)
+  const [analyzeProgress, setAnalyzeProgress] = useState(0)
+  const [hasAnalyzed, setHasAnalyzed] = useState(false)
+  // Precomputed per-timestamp detections from a full-video analysis pass
+  // (see videoAnalyzer.ts) — once populated, the draw loop reads from this
+  // instead of the live tracked-people refs, and the live inference loop
+  // stops running entirely for this video. A ref (not state) since the draw
+  // loop reads it every animation frame.
+  const analyzedFramesRef = useRef<AnalyzedFrame[] | null>(null)
+  const analyzeRunnerRef = useRef<(() => void) | null>(null)
+  const analyzeAbortRef = useRef<AbortController | null>(null)
 
   useEffect(() => {
     const handleChange = () => setIsFullscreen(document.fullscreenElement === stageFrameRef.current)
@@ -152,6 +150,15 @@ export default function CameraStage({
 
   useEffect(() => {
     zonesRef.current = zones
+    // A finished analysis pass baked in zone-dwell/event data computed
+    // against whatever zones existed at the time — editing zones afterward
+    // would leave that data silently wrong (stale dwell times, events for
+    // zones that no longer exist), so drop it and fall back to live
+    // inference until the user re-analyzes.
+    if (analyzedFramesRef.current) {
+      analyzedFramesRef.current = null
+      setHasAnalyzed(false)
+    }
   }, [zones])
 
   useEffect(() => {
@@ -160,6 +167,13 @@ export default function CameraStage({
 
   useEffect(() => {
     qualityRef.current = quality
+    // A finished analysis pass was detected with whichever model was active
+    // at the time — switching tiers afterward would silently keep showing
+    // results from the old model, so drop it and require a re-analyze.
+    if (analyzedFramesRef.current) {
+      analyzedFramesRef.current = null
+      setHasAnalyzed(false)
+    }
     let cancelled = false
     onModelLoadingChange(true)
     onModelLoadProgress(0)
@@ -268,6 +282,7 @@ export default function CameraStage({
     let frameCount = 0
     let fpsTimer = performance.now()
     let detachPlaybackListeners: (() => void) | null = null
+    let lastAnalyzedFrameTime = -1
 
     async function start() {
       const video = videoRef.current!
@@ -276,6 +291,10 @@ export default function CameraStage({
       canvas.height = CANVAS_H
       peopleRef.current = new Map()
       keypointsRef.current = new Map()
+      analyzedFramesRef.current = null
+      setHasAnalyzed(false)
+      setAnalyzing(false)
+      analyzeAbortRef.current?.abort()
 
       if (!running) {
         setStatus('Feed stopped')
@@ -340,6 +359,49 @@ export default function CameraStage({
       const cover = computeCoverTransform(video.videoWidth, video.videoHeight, CANVAS_W, CANVAS_H)
 
       setStatus('')
+
+      let analysisInFlight = false
+      const runAnalysis = () => {
+        // Not `analyzing` React state — this closure is created once per
+        // start() run and would otherwise always see the value from that
+        // render, never updates from setAnalyzing() after. The disabled
+        // button attribute already blocks a second click through the UI;
+        // this guards the ref-call path the same way.
+        if (source.kind !== 'upload' || analysisInFlight) return
+        analysisInFlight = true
+        video.pause()
+        const controller = new AbortController()
+        analyzeAbortRef.current = controller
+        setAnalyzing(true)
+        setAnalyzeProgress(0)
+        analyzeVideo(
+          video,
+          zonesRef.current,
+          cover,
+          qualityRef.current,
+          loiterThresholdRef.current,
+          (fraction) => {
+            if (!stopped) setAnalyzeProgress(fraction)
+          },
+          controller.signal,
+        )
+          .then((result) => {
+            if (stopped || controller.signal.aborted) return
+            analyzedFramesRef.current = result.frames
+            lastAnalyzedFrameTime = -1
+            setHasAnalyzed(true)
+            result.events.forEach(onEvent)
+            video.currentTime = 0
+          })
+          .catch((err) => {
+            console.error('[CameraStage] full-video analysis failed', err)
+          })
+          .finally(() => {
+            analysisInFlight = false
+            if (!stopped) setAnalyzing(false)
+          })
+      }
+      analyzeRunnerRef.current = runAnalysis
 
       // Paused, there's no real-time FPS budget to protect — run YOLO26s-pose
       // uncapped on just this one frame, instead of the live loop's capped
@@ -411,10 +473,15 @@ export default function CameraStage({
         }
         const handlePause = () => {
           setVideoPlaying(false)
-          inspectPausedFrame()
+          // A full-video analysis pauses the video itself, then seeks
+          // through it hundreds of times — without this check, every one of
+          // those internal seeks would also trigger a real (redundant, on
+          // top of the analysis pass's own) inference call here, doubling
+          // the cost and fighting the analysis loop for the canvas.
+          if (!analysisInFlight) inspectPausedFrame()
         }
         const handleSeeked = () => {
-          if (video.paused) {
+          if (video.paused && !analysisInFlight) {
             inspectPausedFrame()
           }
           // While playing, the always-on draw loop below picks up the new
@@ -442,10 +509,19 @@ export default function CameraStage({
       // draw loop below runs every animation frame regardless of how fast
       // (or slow) the inference loop further down is currently completing.
       const drawOverlays = () => {
-        const people = Array.from(peopleRef.current.values())
+        // Once a full-video analysis has run, playback always reads from
+        // its precomputed timeline instead of the live refs — correct at
+        // any scrub position, and no longer bottlenecked by inference speed.
+        const analyzedFrame = analyzedFramesRef.current ? findAnalyzedFrame(analyzedFramesRef.current, video.currentTime) : null
+        const people = analyzedFrame ? analyzedFrame.people : Array.from(peopleRef.current.values())
+        const keypointsSource = analyzedFrame ? analyzedFrame.keypoints : keypointsRef.current
+        if (analyzedFrame && analyzedFrame.time !== lastAnalyzedFrameTime) {
+          lastAnalyzedFrameTime = analyzedFrame.time
+          onPeopleUpdate(people)
+        }
 
         for (const person of people) {
-          const keypoints = keypointsRef.current.get(person.id)
+          const keypoints = keypointsSource.get(person.id)
           const color = ACTIVITY_COLORS[person.activity] ?? '#94a3b8'
           if (keypoints && overlayModeRef.current === 'full') {
             ctx.strokeStyle = color
@@ -562,104 +638,19 @@ export default function CameraStage({
           lastLoggedPoseCount = poses.length
         }
 
-        const seenIds = new Set<number>()
-
-        for (const pose of poses) {
-          const id = pose.id ?? -1
-          if (id < 0) continue
-          seenIds.add(id)
-
-          const prev = peopleRef.current.get(id)
-          const activityRaw = classifyActivity(pose, prev)
-
-          const wristPoint = pose.keypoints
-            .filter((k) => (k.name === 'left_wrist' || k.name === 'right_wrist') && (k.score ?? 0) > 0.3)
-            .sort((a, b) => a.y - b.y)[0]
-          // classifyActivity/history stay in native video-space (unaffected by canvas presentation size);
-          // zones and drawing use the canvas-space point after the cover crop/scale.
-          const centroid: Point = getCentroid(pose)
-          const canvasCentroid = mapPointCover(centroid, cover)
-
-          const loiterSec = loiterThresholdRef.current
-          const lingerSec = loiterSec * LINGER_THRESHOLD_RATIO
-          const zoneDwell = { ...(prev?.zoneDwell ?? {}) }
-          const zoneLastInside = { ...(prev?.zoneLastInside ?? {}) }
-          const zoneVisits = { ...(prev?.zoneVisits ?? {}) }
-          for (const zone of zonesRef.current) {
-            const inside = pointInZone(canvasCentroid, zone)
-            const key = zone.id
-            const before = zoneDwell[key] ?? 0
-            if (inside) {
-              zoneDwell[key] = before + dt
-              zoneLastInside[key] = now
-              if (before === 0) {
-                zoneVisits[key] = (zoneVisits[key] ?? 0) + 1
-                if (zoneVisits[key] === ZONE_REVISIT_ALERT_COUNT) {
-                  onEvent({
-                    id: `${Date.now()}-${id}-${key}-revisit`,
-                    timestamp: Date.now(),
-                    personId: id,
-                    message: `Person ${id} has revisited "${zone.label}" ${ZONE_REVISIT_ALERT_COUNT} times`,
-                    level: 'info',
-                  })
-                }
-              }
-              if (before < lingerSec && zoneDwell[key] >= lingerSec) {
-                onEvent({
-                  id: `${Date.now()}-${id}-${key}-linger`,
-                  timestamp: Date.now(),
-                  personId: id,
-                  message: `Person ${id} lingering in "${zone.label}"`,
-                  level: 'info',
-                })
-              }
-              if (before < loiterSec && zoneDwell[key] >= loiterSec) {
-                onEvent({
-                  id: `${Date.now()}-${id}-${key}`,
-                  timestamp: Date.now(),
-                  personId: id,
-                  message: `Person ${id} loitering in "${zone.label}" (${loiterSec}s+)`,
-                  level: 'warning',
-                })
-              }
-            } else {
-              const lastInside = zoneLastInside[key] ?? 0
-              const sinceLeftSec = (now - lastInside) / 1000
-              if (sinceLeftSec > ZONE_EXIT_GRACE_SEC) {
-                zoneDwell[key] = 0
-                zoneLastInside[key] = 0
-              }
-              // else: briefly outside (flicker/occlusion) — hold dwell steady until grace expires
-            }
-          }
-
-          const anyLoitering = Object.values(zoneDwell).some((v) => v >= loiterSec)
-          const anyLingering = Object.values(zoneDwell).some((v) => v >= lingerSec)
-          const activity = anyLoitering ? 'loitering' : anyLingering ? 'lingering' : activityRaw
-
-          const history = pushHistory(prev?.history ?? [], centroid)
-
-          const person: TrackedPerson = {
-            id,
-            centroid: canvasCentroid,
-            wrist: wristPoint ? mapPointCover({ x: wristPoint.x, y: wristPoint.y }, cover) : null,
-            activity,
-            lastSeen: now,
-            zoneDwell,
-            zoneLastInside,
-            zoneVisits,
-            history,
-          }
-          peopleRef.current.set(id, person)
-          keypointsRef.current.set(id, pose.keypoints)
-        }
-
-        for (const [id, person] of Array.from(peopleRef.current)) {
-          if (!seenIds.has(id) && now - person.lastSeen > STALE_PERSON_GRACE_MS) {
-            peopleRef.current.delete(id)
-            keypointsRef.current.delete(id)
-          }
-        }
+        const result = processFrame(
+          poses,
+          peopleRef.current,
+          keypointsRef.current,
+          zonesRef.current,
+          cover,
+          dt,
+          now,
+          loiterThresholdRef.current,
+        )
+        peopleRef.current = result.people
+        keypointsRef.current = result.keypoints
+        result.events.forEach(onEvent)
 
         onPeopleUpdate(Array.from(peopleRef.current.values()))
 
@@ -673,7 +664,10 @@ export default function CameraStage({
 
       const inferenceLoop = () => {
         if (stopped) return
-        if (!inferenceBusy && !video.paused && !video.ended && !isInspecting) {
+        // A full-video analysis already computed detections for every
+        // timestamp — no need to keep running the model live once that
+        // exists, the draw loop reads from that timeline instead.
+        if (!inferenceBusy && !video.paused && !video.ended && !isInspecting && !analyzedFramesRef.current) {
           inferenceBusy = true
           runInferencePass()
             .catch((err) => console.error('[CameraStage] inference frame failed, retrying next frame', err))
@@ -698,6 +692,8 @@ export default function CameraStage({
       stream?.getTracks().forEach((t) => t.stop())
       if (objectUrl) URL.revokeObjectURL(objectUrl)
       setResolution(null)
+      analyzeRunnerRef.current = null
+      analyzeAbortRef.current?.abort()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -819,6 +815,26 @@ export default function CameraStage({
           </div>
         )}
         <div className="toolbar-group">
+          {source.kind === 'upload' && (
+            <button
+              className={hasAnalyzed ? 'btn active' : 'btn'}
+              onClick={() => analyzeRunnerRef.current?.()}
+              disabled={analyzing}
+              title="Analyze the whole video up front, then play back with smooth, precomputed detections instead of live inference"
+            >
+              {analyzing ? (
+                <>
+                  <CircleNotch size={13} weight="bold" className="spin" />
+                  Analyzing… {Math.round(analyzeProgress * 100)}%
+                </>
+              ) : (
+                <>
+                  <Sparkle size={13} weight="bold" />
+                  {hasAnalyzed ? 'Re-analyze video' : 'Analyze video'}
+                </>
+              )}
+            </button>
+          )}
           <button
             className="btn"
             onClick={() => setOverlayMode((m) => (m === 'full' ? 'minimal' : 'full'))}
