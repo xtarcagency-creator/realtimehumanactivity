@@ -8,104 +8,46 @@ import BootSequence from '../components/BootSequence'
 import './Landing.css'
 
 const REPO_URL = 'https://github.com/xtarcagency-creator/realtime'
+const XTARC_URL = 'https://xtarc.agency/'
 
-const SCROLL_STEPS = [
-  {
-    n: '01',
-    tag: 'INITIALIZE',
-    body: 'The feed comes online. The vision system activates and begins scanning for subjects.',
-    stage: 0,
-  },
-  {
-    n: '02',
-    tag: 'DETECT',
-    body: 'Multi-person pose estimation runs across the live frame — bounding box, skeleton, identity and confidence, per subject.',
-    stage: 2,
-  },
-  {
-    n: '03',
-    tag: 'MAP',
-    body: 'A spatial zone is drawn over the scene. Dwell time begins accumulating the moment a subject enters it.',
-    stage: 3,
-  },
-  {
-    n: '04',
-    tag: 'RESPOND',
-    body: 'Movement becomes a structured event — entry, dwell, loitering — timestamped and attributable to a subject.',
-    stage: 5,
-  },
+const ARCHITECTURE = [
+  { n: '01', label: 'VIDEO INPUT', detail: 'Camera stream or an uploaded file, decoded natively by the browser.' },
+  { n: '02', label: 'PERSON DETECTION', detail: 'A top-down pass isolates each human subject before pose runs.' },
+  { n: '03', label: 'POSE ESTIMATION', detail: '17 COCO keypoints per subject, per frame.' },
+  { n: '04', label: 'TRACKING', detail: 'A centroid tracker assigns and holds a stable ID across frames.' },
+  { n: '05', label: 'ACTIVITY ENGINE', detail: 'Pose sequences classify standing, walking, bending, reaching.' },
+  { n: '06', label: 'ZONE INTELLIGENCE', detail: 'Spatial polygons turn presence and dwell into events.' },
 ]
-
-const ARCHITECTURE = ['VIDEO INPUT', 'PERSON DETECTION', 'POSE ESTIMATION', 'TRACKING', 'ACTIVITY ENGINE', 'ZONE INTELLIGENCE']
 
 const MODES = [
-  {
-    n: '01',
-    name: 'FAST',
-    model: 'MoveNet MultiPose',
-    input: '256px input',
-    note: 'Designed for speed',
-  },
-  {
-    n: '02',
-    name: 'BALANCED',
-    model: 'MoveNet MultiPose',
-    input: '384px input',
-    note: 'Improved small-person recall',
-  },
-  {
-    n: '03',
-    name: 'HIGH',
-    model: 'YOLO26-pose · top-down',
-    input: 'Person detection + individual pose estimation',
-    note: 'Higher compute cost',
-  },
+  { n: '01', name: 'FAST', model: 'MoveNet MultiPose', input: '256px', pos: 0.06 },
+  { n: '02', name: 'BALANCED', model: 'MoveNet MultiPose', input: '384px', pos: 0.5 },
+  { n: '03', name: 'HIGH', model: 'Top-down detection + per-person pose', input: 'variable', pos: 0.94 },
 ]
 
-const TRACK_SEQUENCE = [
-  { id: 'ID 01', pos: '(212, 348)', vel: '1.4 m/s', dwell: '00:06', conf: '0.91' },
-  { id: 'ID 01', pos: '(238, 344)', vel: '1.6 m/s', dwell: '00:07', conf: '0.89' },
-  { id: 'ID 01', pos: '(266, 336)', vel: '1.5 m/s', dwell: '00:08', conf: '0.93' },
-  { id: 'ID 01', pos: '(297, 329)', vel: '1.3 m/s', dwell: '00:09', conf: '0.90' },
+const CONDITIONS = [
+  { n: '01', title: 'LOW LIGHT' },
+  { n: '02', title: 'OCCLUSION' },
+  { n: '03', title: 'MOTION BLUR' },
+  { n: '04', title: 'DISTANT SUBJECTS' },
 ]
-
-const PIPELINE = ['CAMERA', 'WEBGL / WEBGPU', 'MODEL', 'TRACKER', 'EVENT ENGINE']
 
 const PERF_METRICS = [
-  { label: 'VIDEO', value: '30', unit: 'FPS' },
-  { label: 'AI INFERENCE', value: '9.8', unit: 'FPS' },
-  { label: 'PEOPLE', value: '04', unit: '' },
-  { label: 'BACKEND', value: 'WEBGPU', unit: '' },
-  { label: 'UPLOADS', value: 'ZERO', unit: '' },
-  { label: 'MODEL', value: 'YOLO26', unit: '' },
+  { value: '30', label: 'VIDEO FPS' },
+  { value: '09.8', label: 'AI FPS' },
+  { value: '17', label: 'POSE KEYPOINTS' },
+  { value: '00', label: 'VIDEO UPLOADS' },
 ]
 
-const LIMITATIONS = [
-  {
-    n: '01',
-    title: 'Crowded scenes',
-    body: 'Detection quality degrades as overlap increases. Dense crowds reduce per-subject pose accuracy.',
-  },
-  {
-    n: '02',
-    title: 'Low-resolution CCTV',
-    body: 'Small, distant subjects on compressed feeds are the hardest case — High mode exists specifically for this.',
-  },
-  {
-    n: '03',
-    title: 'Occlusion & ID persistence',
-    body: 'A subject fully blocked for longer than the tracker\'s grace window can be re-assigned a new ID on reappearance.',
-  },
-  {
-    n: '04',
-    title: 'Browser GPU limits',
-    body: 'WebGPU is fastest but not universally available. The system falls back to WASM automatically, at a real cost to FPS.',
-  },
-  {
-    n: '05',
-    title: 'Model latency',
-    body: 'Heavier detection (High) trades frame rate for accuracy. There is no free version of that trade.',
-  },
+const PIPELINE = ['CAMERA', 'BROWSER', 'MODEL', 'TRACKER', 'EVENT ENGINE']
+
+const CONSTRAINTS = [
+  { n: '01', title: 'Crowded scenes', body: 'Detection quality degrades as overlap increases between subjects.' },
+  { n: '02', title: 'Small people', body: 'Distant, low-pixel subjects are the hardest case for any pose model.' },
+  { n: '03', title: 'Occlusion', body: 'A partially hidden subject yields a lower-confidence, noisier pose.' },
+  { n: '04', title: 'Identity persistence', body: 'A subject blocked past the tracker’s grace window can re-enter as a new ID.' },
+  { n: '05', title: 'Low-quality CCTV', body: 'Compression artifacts and low resolution both reduce recall.' },
+  { n: '06', title: 'Browser inference latency', body: 'No server GPU to fall back on — the trade against accuracy is real and visible.' },
 ]
 
 function usePrefersReducedMotion() {
@@ -118,6 +60,41 @@ function usePrefersReducedMotion() {
     return () => mq.removeEventListener('change', handler)
   }, [])
   return reduced
+}
+
+/** Scroll progress (0..1) of a tall section: 0 as its top reaches the viewport top, 1 as its bottom does. */
+function useSectionScrollProgress(reduced: boolean) {
+  const ref = useRef<HTMLDivElement>(null)
+  const [progress, setProgress] = useState(0)
+
+  useEffect(() => {
+    if (reduced) {
+      setProgress(1)
+      return
+    }
+    let raf = 0
+    const onScroll = () => {
+      cancelAnimationFrame(raf)
+      raf = requestAnimationFrame(() => {
+        const el = ref.current
+        if (!el) return
+        const rect = el.getBoundingClientRect()
+        const total = rect.height - window.innerHeight
+        const p = total > 0 ? (-rect.top) / total : 0
+        setProgress(Math.min(1, Math.max(0, p)))
+      })
+    }
+    onScroll()
+    window.addEventListener('scroll', onScroll, { passive: true })
+    window.addEventListener('resize', onScroll)
+    return () => {
+      cancelAnimationFrame(raf)
+      window.removeEventListener('scroll', onScroll)
+      window.removeEventListener('resize', onScroll)
+    }
+  }, [reduced])
+
+  return { ref, progress }
 }
 
 function useActiveStep(count: number, reduced: boolean) {
@@ -150,21 +127,23 @@ function SplitCTA({
   href,
   children,
   size = 'md',
+  dark = false,
 }: {
   to?: string
   href?: string
   children: string
   size?: 'md' | 'lg'
+  dark?: boolean
 }) {
   const inner = (
     <>
       <span className="split-cta-main">{children}</span>
       <span className="split-cta-arrow">
-        <ArrowUpRight size={size === 'lg' ? 16 : 14} weight="bold" />
+        <ArrowUpRight size={size === 'lg' ? 17 : 14} weight="bold" />
       </span>
     </>
   )
-  const cls = `split-cta ${size === 'lg' ? 'split-cta-lg' : ''}`
+  const cls = `split-cta ${size === 'lg' ? 'split-cta-lg' : ''} ${dark ? 'split-cta-onlight' : ''}`
   if (to) {
     return (
       <Link className={cls} to={to}>
@@ -181,49 +160,18 @@ function SplitCTA({
 
 export default function Landing() {
   const reduced = usePrefersReducedMotion()
-  const scrollStory = useActiveStep(SCROLL_STEPS.length, reduced)
-  const archRef = useRef<HTMLDivElement>(null)
-  const [archVisible, setArchVisible] = useState(false)
-  const [trackIndex, setTrackIndex] = useState(0)
-  const trackRef = useRef<HTMLDivElement>(null)
-  const [trackVisible, setTrackVisible] = useState(false)
+  const hero = useSectionScrollProgress(reduced)
+  const heroP = hero.progress
+  const heroScale = 0.92 + 0.08 * heroP
+  const heroSpread = heroP * 14
+  const heroStage = Math.ceil(heroP * 5)
 
-  useEffect(() => {
-    const el = archRef.current
-    if (!el) return
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          setArchVisible(true)
-          observer.disconnect()
-        }
-      },
-      { threshold: 0.3 },
-    )
-    observer.observe(el)
-    return () => observer.disconnect()
-  }, [])
-
-  useEffect(() => {
-    const el = trackRef.current
-    if (!el) return
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) setTrackVisible(true)
-      },
-      { threshold: 0.4 },
-    )
-    observer.observe(el)
-    return () => observer.disconnect()
-  }, [])
-
-  useEffect(() => {
-    if (!trackVisible || reduced) return
-    const id = window.setInterval(() => {
-      setTrackIndex((i) => (i + 1) % TRACK_SEQUENCE.length)
-    }, 1400)
-    return () => window.clearInterval(id)
-  }, [trackVisible, reduced])
+  const arch = useActiveStep(ARCHITECTURE.length, reduced)
+  const modesStory = useActiveStep(MODES.length, reduced)
+  const signature = useSectionScrollProgress(reduced)
+  const sigP = signature.progress
+  const sigPhase1 = Math.min(1, sigP / 0.5)
+  const sigPhase2 = Math.max(0, Math.min(1, (sigP - 0.5) / 0.5))
 
   return (
     <div className="landing">
@@ -242,252 +190,342 @@ export default function Landing() {
       </header>
 
       <main>
-        {/* ---- HERO ---- */}
-        <section className="hero">
-          <div className="hero-grid">
-            <div className="hero-col-index">
-              <Reveal className="hero-index">
-                <span className="hero-index-n">01</span>
-                <span className="hero-index-label">COMPUTER VISION SYSTEM</span>
-              </Reveal>
+        {/* ================= HERO + CINEMATIC SCROLL TRANSITION ================= */}
+        <section className="lt-dark hero-block" ref={hero.ref}>
+          <div className="hero-sticky">
+            <div className="hero-meta-row">
+              <span className="hero-meta">XTARC / EXPERIMENT 001</span>
+              <span className="hero-meta hero-meta-center">COMPUTER VISION SYSTEM</span>
+              <span className="hero-meta">2026</span>
             </div>
-            <div className="hero-col-main">
-              <Reveal delay={60}>
-                <h1 className="hero-h1">
-                  Human activity,
-                  <br />
-                  understood in real time.
-                </h1>
-              </Reveal>
-              <Reveal delay={140} className="hero-lower">
-                <p className="hero-sub">
-                  Multi-person tracking, pose estimation, zone intelligence and activity detection — running directly
-                  in the browser.
-                </p>
-                <div className="hero-actions">
-                  <SplitCTA to="/app" size="lg">
-                    Launch Analyzer
-                  </SplitCTA>
-                  <a className="btn-ghost" href={REPO_URL} target="_blank" rel="noreferrer">
-                    <GithubLogo size={15} weight="bold" />
-                    View Source
-                  </a>
-                </div>
-              </Reveal>
+
+            <h1 className="hero-h1" style={{ letterSpacing: `${-0.03 - heroSpread * 0.0006}em`, gap: `${heroSpread * 0.5}px` }}>
+              <span className="hero-h1-line" style={{ transform: `translateY(${-heroSpread * 0.3}px)` }}>
+                Human activity,
+              </span>
+              <span className="hero-h1-line" style={{ transform: `translateY(${heroSpread * 0.3}px)` }}>
+                understood in real time.
+              </span>
+            </h1>
+
+            <div className="hero-lower">
+              <p className="hero-sub">
+                A browser-native vision system for multi-person tracking, pose estimation, zone intelligence and
+                activity detection.
+              </p>
+              <SplitCTA to="/app" size="lg">
+                Enter the analyzer
+              </SplitCTA>
+            </div>
+
+            <div
+              className="hero-product"
+              style={{ transform: `scale(${heroScale}) translateY(${(1 - heroP) * 26}px)` }}
+            >
+              <DemoPanel stage={heroStage} className="hero-product-glow" />
             </div>
           </div>
         </section>
 
-        {/* ---- PRODUCT HERO (real screenshot) ---- */}
-        <section className="product-hero">
-          <Reveal className="product-hero-frame">
-            <div className="product-hero-bar">
-              <span className="product-hero-dot" />
-              <span className="product-hero-live">SYSTEM ONLINE</span>
+        {/* ================= THE QUESTION ================= */}
+        <section className="lt-light question">
+          <Reveal className="question-text">
+            <span className="statement-serif">Cameras see everything.</span>
+            <br />
+            Understanding what happens inside the frame is harder.
+          </Reveal>
+          <Reveal delay={100} className="question-body">
+            <p>
+              We set out to build a real-time system capable of detecting, tracking and interpreting multiple people
+              without sending video to a remote processing server.
+            </p>
+          </Reveal>
+        </section>
+
+        {/* ================= EDITORIAL GRID ================= */}
+        <section className="lt-light egrid">
+          <Reveal className="egrid-lede">
+            <p>
+              Every number below is a real constraint the system was built around — not a marketing figure.
+            </p>
+          </Reveal>
+          <div className="egrid-cols">
+            <Reveal className="egrid-cell">
+              <span className="egrid-value mono">WEBGL</span>
+              <span className="egrid-label">Client-side inference</span>
+            </Reveal>
+            <Reveal delay={60} className="egrid-cell">
+              <span className="egrid-value mono">17</span>
+              <span className="egrid-label">Pose keypoints</span>
+            </Reveal>
+            <Reveal delay={120} className="egrid-cell egrid-cell-visual">
+              <div className="egrid-loop" aria-hidden="true">
+                <span className="egrid-loop-box" />
+                <span className="egrid-loop-dot" />
+              </div>
+            </Reveal>
+            <Reveal delay={180} className="egrid-cell">
+              <span className="egrid-value mono">ZERO</span>
+              <span className="egrid-label">Video uploads</span>
+            </Reveal>
+          </div>
+        </section>
+
+        {/* ================= SYSTEM ARCHITECTURE ================= */}
+        <section className="lt-dark architecture" ref={arch.containerRef}>
+          <span className="section-index">SYSTEM ARCHITECTURE</span>
+          <div className="architecture-list">
+            {ARCHITECTURE.map((stage, i) => (
+              <div
+                key={stage.n}
+                ref={(el) => {
+                  arch.stepRefs.current[i] = el
+                }}
+                className={`architecture-stage ${arch.active === i ? 'is-active' : ''}`}
+              >
+                <span className="architecture-stage-n mono">{stage.n}</span>
+                <span className="architecture-stage-label">{stage.label}</span>
+                <span className="architecture-stage-detail">{stage.detail}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* ================= TRACKING VISUAL ================= */}
+        <section className="lt-dark tracking-visual">
+          <span className="section-index">TRACKING</span>
+          <div className="tv-composition">
+            <span className="tv-tag tv-tag-tl mono">
+              TRACK AGE
+              <b>00:17.82</b>
+            </span>
+            <span className="tv-tag tv-tag-tr mono">
+              ZONE
+              <b>A</b>
+            </span>
+            <div className="tv-subject">
+              <span className="tv-p01">P-01</span>
+              <SkeletonFigure />
+            </div>
+            <span className="tv-tag tv-tag-bl mono">
+              DWELL
+              <b>00:06.40</b>
+            </span>
+            <span className="tv-tag tv-tag-bm mono">
+              VELOCITY
+              <b>18.4 PX</b>
+            </span>
+            <span className="tv-tag tv-tag-br mono">
+              CONFIDENCE
+              <b>.94</b>
+            </span>
+            <span className="tv-tag tv-tag-pos mono">
+              POSITION
+              <b>X 428 &nbsp; Y 217</b>
+            </span>
+          </div>
+        </section>
+
+        {/* ================= DETECTION MODES ================= */}
+        <section className="lt-light modes" ref={modesStory.containerRef}>
+          <span className="section-index section-index-onlight">DETECTION MODES</span>
+          <div className="modes-continuum">
+            <span className="modes-rail-label">SPEED</span>
+            <div className="modes-rail">
+              <span
+                className="modes-rail-fill"
+                style={{ width: `${MODES[modesStory.active].pos * 100}%` }}
+              />
+              <span className="modes-rail-dot" style={{ left: `${MODES[modesStory.active].pos * 100}%` }} />
+            </div>
+            <span className="modes-rail-label">PRECISION</span>
+          </div>
+          <div className="modes-steps">
+            {MODES.map((mode, i) => (
+              <div
+                key={mode.n}
+                ref={(el) => {
+                  modesStory.stepRefs.current[i] = el
+                }}
+                className={`modes-step ${modesStory.active === i ? 'is-active' : ''}`}
+              >
+                <span className="mono modes-step-n">{mode.n}</span>
+                <span className="modes-step-name">{mode.name}</span>
+                <span className="modes-step-model">{mode.model}</span>
+                <span className="mono modes-step-input">{mode.input}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* ================= SIGNATURE VISUAL MOMENT ================= */}
+        <section className="lt-dark signature" ref={signature.ref}>
+          <div className="signature-sticky">
+            <div className="signature-visual" style={{ opacity: 0.25 + sigPhase1 * 0.75 }}>
+              <SkeletonFigure spread={sigPhase1} />
+              {sigPhase2 > 0.05 && (
+                <svg className="signature-zone" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+                  <polygon
+                    points="10,60 55,54 58,96 8,98"
+                    style={{ strokeDashoffset: `${(1 - sigPhase2) * 260}` }}
+                  />
+                </svg>
+              )}
+            </div>
+            <div className="signature-copy">
+              <h2 className={sigPhase2 < 0.5 ? 'is-visible' : ''}>
+                FROM PIXELS
+                <br />
+                TO PRESENCE.
+              </h2>
+              <h2 className={sigPhase2 >= 0.5 ? 'is-visible' : ''}>
+                FROM PRESENCE
+                <br />
+                TO BEHAVIOR.
+              </h2>
+            </div>
+            {sigPhase1 > 0.4 && (
+              <div className="signature-coords mono" style={{ opacity: Math.min(1, (sigPhase1 - 0.4) * 2.4) }}>
+                <span>NOSE 50,8</span>
+                <span>L_WRIST 26,54</span>
+                <span>R_ANKLE 62,94</span>
+              </div>
+            )}
+            {sigPhase2 > 0.6 && (
+              <div className="signature-event mono" style={{ opacity: Math.min(1, (sigPhase2 - 0.6) * 2.5) }}>
+                Person 01 entered Zone A · dwell 00:06
+              </div>
+            )}
+          </div>
+        </section>
+
+        {/* ================= REAL WORLD CONDITIONS ================= */}
+        <section className="lt-light conditions">
+          <Reveal>
+            <h2 className="section-title-editorial">Real footage isn&rsquo;t clean.</h2>
+          </Reveal>
+          <div className="conditions-list">
+            {CONDITIONS.map((c) => (
+              <Reveal key={c.n} className="conditions-item">
+                <span className="mono conditions-n">{c.n}</span>
+                <span className="conditions-title">{c.title}</span>
+              </Reveal>
+            ))}
+          </div>
+          <Reveal delay={100} className="conditions-note">
+            <p>These conditions informed the model architecture and the three quality tiers directly — not as an afterthought.</p>
+          </Reveal>
+        </section>
+
+        {/* ================= PERFORMANCE ================= */}
+        <section className="lt-dark performance">
+          <span className="section-index">PERFORMANCE</span>
+          <div className="performance-grid">
+            {PERF_METRICS.map((m) => (
+              <Reveal key={m.label} className="performance-cell">
+                <span className="performance-value mono">{m.value}</span>
+                <span className="performance-label mono">{m.label}</span>
+              </Reveal>
+            ))}
+          </div>
+          <p className="performance-note">Shown live in the analyzer&rsquo;s diagnostics panel &mdash; figures above are illustrative, not invented.</p>
+        </section>
+
+        {/* ================= PRIVACY / LOCAL COMPUTE ================= */}
+        <section className="lt-dark privacy">
+          <Reveal>
+            <h2 className="section-title-editorial">
+              THE FOOTAGE
+              <br />
+              NEVER LEAVES
+              <br />
+              THE BROWSER.
+            </h2>
+          </Reveal>
+          <Reveal delay={80} className="pipeline-row">
+            {PIPELINE.map((step, i) => (
+              <div key={step} className="pipeline-item">
+                <span className="pipeline-box mono">{step}</span>
+                {i < PIPELINE.length - 1 && <span className="pipeline-line" />}
+              </div>
+            ))}
+          </Reveal>
+          <Reveal delay={140} className="pipeline-tags">
+            <span className="pipeline-tag mono">LOCAL INFERENCE</span>
+            <span className="pipeline-tag mono">WEBGL / WEBGPU</span>
+            <span className="pipeline-tag mono">ZERO FRAME UPLOADS</span>
+          </Reveal>
+        </section>
+
+        {/* ================= ENGINEERING CONSTRAINTS ================= */}
+        <section className="lt-light constraints">
+          <span className="section-index section-index-onlight">CONSTRAINTS</span>
+          <h2 className="section-title-editorial">
+            BUILT WITH
+            <br />
+            CONSTRAINTS IN MIND.
+          </h2>
+          <div className="constraints-list">
+            {CONSTRAINTS.map((c) => (
+              <Reveal key={c.n} className="constraints-row">
+                <span className="mono constraints-n">{c.n}</span>
+                <span className="constraints-title">{c.title}</span>
+                <span className="constraints-body">{c.body}</span>
+              </Reveal>
+            ))}
+          </div>
+        </section>
+
+        {/* ================= PRODUCT FINALE ================= */}
+        <section className="lt-dark finale">
+          <Reveal className="finale-frame">
+            <div className="finale-bar">
+              <span className="finale-live mono">SYSTEM ONLINE</span>
             </div>
             <img
-              className="product-hero-img"
+              className="finale-img"
               src="/landing/dashboard-preview.png"
               alt="Realtime Activity Analyzer interface showing multi-person pose tracking, detection zones and the live event log"
               width={1400}
               height={900}
             />
           </Reveal>
-        </section>
-
-        {/* ---- SCROLL STORY ---- */}
-        <section className="scroll-story" ref={scrollStory.containerRef}>
-          <div className="scroll-story-visual">
-            <span className="scroll-story-caption">{SCROLL_STEPS[scrollStory.active].tag}</span>
-            <DemoPanel stage={SCROLL_STEPS[scrollStory.active].stage} />
-          </div>
-          <div className="scroll-story-steps">
-            {SCROLL_STEPS.map((step, i) => (
-              <div
-                key={step.n}
-                ref={(el) => {
-                  scrollStory.stepRefs.current[i] = el
-                }}
-                className={`scroll-story-step ${scrollStory.active === i ? 'is-active' : ''}`}
-              >
-                <span className="mono-index">{step.n} / {step.tag}</span>
-                <p>{step.body}</p>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        {/* ---- PROJECT INTRODUCTION ---- */}
-        <section className="statement">
-          <Reveal>
-            <p className="statement-text">
-              Video is easy to capture.
-              <br />
-              <span className="statement-dim">Understanding what happens inside it is harder.</span>
-            </p>
-          </Reveal>
-          <Reveal delay={100} className="statement-body">
-            <p>
-              Real footage is rarely clean. Low-resolution CCTV, multiple overlapping people, partial occlusion,
-              identity drift across frames — and a browser GPU budget, not a server rack, to work within. This
-              project runs the full detection, tracking and zone-intelligence pipeline client-side, with no video
-              ever leaving the device.
-            </p>
+          <Reveal delay={100} className="finale-cta">
+            <SplitCTA to="/app" size="lg">
+              Launch analyzer
+            </SplitCTA>
           </Reveal>
         </section>
 
-        {/* ---- SYSTEM ARCHITECTURE ---- */}
-        <section className="architecture" ref={archRef}>
-          <span className="section-index">02 / SYSTEM ARCHITECTURE</span>
-          <div className={`architecture-flow ${archVisible ? 'is-visible' : ''}`}>
-            {ARCHITECTURE.map((step, i) => (
-              <div className="architecture-node" key={step}>
-                <span className="architecture-box">
-                  <span className="architecture-n">{String(i + 1).padStart(2, '0')}</span>
-                  {step}
-                </span>
-                {i < ARCHITECTURE.length - 1 && <span className="architecture-connector" style={{ transitionDelay: `${i * 90}ms` }} />}
-              </div>
-            ))}
-          </div>
-        </section>
-
-        {/* ---- DETECTION MODES ---- */}
-        <section className="modes">
-          <span className="section-index">03 / DETECTION MODES</span>
-          <div className="modes-grid">
-            {MODES.map((mode) => (
-              <Reveal key={mode.n} className="mode-row">
-                <span className="mode-n">{mode.n}</span>
-                <span className="mode-name">{mode.name}</span>
-                <span className="mode-model">{mode.model}</span>
-                <span className="mode-input">{mode.input}</span>
-                <span className="mode-note">{mode.note}</span>
-              </Reveal>
-            ))}
-          </div>
-        </section>
-
-        {/* ---- TRACKING ---- */}
-        <section className="tracking" ref={trackRef}>
-          <span className="section-index">04 / TRACKING</span>
-          <Reveal className="tracking-copy">
-            <h2>The tracker predicts movement and associates detections across frames.</h2>
-            <p>Each subject keeps a stable identity as it moves, even through brief gaps in detection.</p>
-          </Reveal>
-          <div className="tracking-sequence">
-            {TRACK_SEQUENCE.map((_, i) => (
-              <div key={i} className={`tracking-node ${i === trackIndex ? 'is-active' : ''} ${i < trackIndex ? 'is-past' : ''}`}>
-                <span className="tracking-box" />
-                {i < TRACK_SEQUENCE.length - 1 && <span className="tracking-arrow">&#8594;</span>}
-              </div>
-            ))}
-          </div>
-          <div className="tracking-meta">
-            <span><b>ID</b> {TRACK_SEQUENCE[trackIndex].id}</span>
-            <span><b>POS</b> {TRACK_SEQUENCE[trackIndex].pos}</span>
-            <span><b>VEL</b> {TRACK_SEQUENCE[trackIndex].vel}</span>
-            <span><b>DWELL</b> {TRACK_SEQUENCE[trackIndex].dwell}</span>
-            <span><b>CONF</b> {TRACK_SEQUENCE[trackIndex].conf}</span>
-          </div>
-        </section>
-
-        {/* ---- SIGNATURE VISUAL ---- */}
-        <section className="signature">
-          <Reveal className="signature-inner">
-            <SkeletonFigure />
-            <p className="signature-copy">
-              17 keypoints.
-              <br />
-              One moving subject.
-              <br />
-              <span className="statement-dim">Continuous context.</span>
-            </p>
-          </Reveal>
-        </section>
-
-        {/* ---- BROWSER-NATIVE ---- */}
-        <section className="browser-native">
-          <Reveal>
-            <h2 className="section-title-left">Your footage stays in the browser.</h2>
-          </Reveal>
-          <Reveal delay={80} className="pipeline-row">
-            {PIPELINE.map((step, i) => (
-              <div key={step} className="pipeline-item">
-                <span className="pipeline-box">{step}</span>
-                {i < PIPELINE.length - 1 && <span className="pipeline-line" />}
-              </div>
-            ))}
-          </Reveal>
-          <Reveal delay={140} className="pipeline-tags">
-            <span className="pipeline-tag">LOCAL INFERENCE</span>
-            <span className="pipeline-tag">NO VIDEO UPLOAD</span>
-            <span className="pipeline-tag">CLIENT-SIDE PROCESSING</span>
-          </Reveal>
-        </section>
-
-        {/* ---- PERFORMANCE ---- */}
-        <section className="performance">
-          <span className="section-index">05 / PERFORMANCE</span>
-          <div className="performance-grid">
-            {PERF_METRICS.map((m) => (
-              <Reveal key={m.label} className="performance-cell">
-                <span className="performance-value">
-                  {m.value}
-                  {m.unit && <span className="performance-unit">{m.unit}</span>}
-                </span>
-                <span className="performance-label">{m.label}</span>
-              </Reveal>
-            ))}
-          </div>
-          <p className="performance-note">Shown live in the analyzer&rsquo;s diagnostics panel — figures above are illustrative.</p>
-        </section>
-
-        {/* ---- KNOWN LIMITATIONS ---- */}
-        <section className="limitations">
-          <span className="section-index">06 / CONSTRAINTS</span>
-          <h2 className="section-title-left">Built with constraints in mind.</h2>
-          <div className="limitations-list">
-            {LIMITATIONS.map((l) => (
-              <Reveal key={l.n} className="limitation-row">
-                <span className="limitation-n">{l.n}</span>
-                <span className="limitation-title">{l.title}</span>
-                <span className="limitation-body">{l.body}</span>
-              </Reveal>
-            ))}
-          </div>
-        </section>
-
-        {/* ---- FINAL CTA ---- */}
-        <section className="final-cta">
-          <Reveal className="final-cta-inner">
+        {/* ================= AGENCY CTA ================= */}
+        <section className="lt-dark agency-cta">
+          <Reveal className="agency-cta-inner">
             <h2>
-              Building AI products
+              THE NEXT SYSTEM
               <br />
-              beyond the prototype.
+              COULD BE YOURS.
             </h2>
-            <p>
-              We combine product design, AI engineering and frontend systems to turn complex technology into usable
-              digital products.
-            </p>
-            <div className="final-cta-actions">
+            <p>We design and engineer digital products where interface, intelligence and technology work as one.</p>
+            <div className="agency-cta-actions">
               <SplitCTA href="mailto:xtarcagency@gmail.com" size="lg">
-                Start a Project
+                Start a project
               </SplitCTA>
-              <SplitCTA to="/app">Launch Analyzer</SplitCTA>
+              <a className="btn-ghost" href={XTARC_URL} target="_blank" rel="noreferrer">
+                View Xtarc
+              </a>
             </div>
           </Reveal>
         </section>
       </main>
 
       <footer className="landing-footer">
-        <span>Realtime Activity Analyzer</span>
+        <span className="mono">REALTIME ACTIVITY ANALYZER</span>
         <a href={REPO_URL} target="_blank" rel="noreferrer">
           <GithubLogo size={15} weight="bold" />
           GitHub
         </a>
-        <span className="footer-built">Built with WebGL / WebGPU / WebAssembly</span>
-        <span className="footer-copy">&copy; {new Date().getFullYear()}</span>
+        <span className="mono footer-built">XTARC EXPERIMENT 001</span>
+        <span className="mono footer-copy">{new Date().getFullYear()}</span>
       </footer>
     </div>
   )

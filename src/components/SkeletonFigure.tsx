@@ -40,7 +40,19 @@ const BONES: [string, string][] = [
   ['right_knee', 'right_ankle'],
 ]
 
-export default function SkeletonFigure() {
+const CENTER_X = 50
+const CENTER_Y = 52
+
+export interface SkeletonFigureProps {
+  /** 0..1 scroll-driven reveal — when given, replaces the CSS auto-reveal with a
+   * manual "points separate outward from center" effect and shows coordinate labels. */
+  spread?: number
+}
+
+export default function SkeletonFigure({ spread }: SkeletonFigureProps) {
+  const manual = spread !== undefined
+  const s = spread ?? 1
+
   return (
     <svg className="skeleton-figure" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
       {BONES.map(([a, b], i) => {
@@ -54,18 +66,30 @@ export default function SkeletonFigure() {
             x2={x2}
             y2={y2}
             className="skeleton-bone"
-            style={{ animationDelay: `${i * 45}ms` }}
+            style={manual ? { animation: 'none', opacity: s } : { animationDelay: `${i * 45}ms` }}
           />
         )
       })}
-      {Object.entries(KEYPOINTS).map(([name, [x, y]], i) => (
-        <g key={name} className="skeleton-joint-group" style={{ animationDelay: `${400 + i * 35}ms` }}>
-          <circle cx={x} cy={y} r={1.4} className="skeleton-joint" />
-          <text x={x + 2.2} y={y - 1.6} className="skeleton-coord">
-            {x.toFixed(0)},{y.toFixed(0)}
-          </text>
-        </g>
-      ))}
+      {Object.entries(KEYPOINTS).map(([name, [kx, ky]], i) => {
+        const dx = (kx - CENTER_X) * 0.12 * s
+        const dy = (ky - CENTER_Y) * 0.12 * s
+        const x = kx + dx
+        const y = ky + dy
+        return (
+          <g
+            key={name}
+            className="skeleton-joint-group"
+            style={manual ? { animation: 'none', opacity: s } : { animationDelay: `${400 + i * 35}ms` }}
+          >
+            <circle cx={x} cy={y} r={1.4} className="skeleton-joint" />
+            {manual && s > 0.6 && (
+              <text x={x + 2.2} y={y - 1.6} className="skeleton-coord">
+                {x.toFixed(0)},{y.toFixed(0)}
+              </text>
+            )}
+          </g>
+        )
+      })}
     </svg>
   )
 }

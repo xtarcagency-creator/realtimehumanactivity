@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react'
-import { Check } from '@phosphor-icons/react'
 
-const STEPS = ['Pose model', 'Tracking engine', 'Zone detection']
+const STEPS = ['MODEL', 'TRACKER', 'ZONE ENGINE', 'RENDERER']
 const BOOT_KEY = 'realtime-activity-analyzer.booted'
 
 // A short, once-per-session boot sequence shown on first landing on the
-// site — a system-status readout, not a logo spinner. Skipped on any
-// subsequent mount (client-side nav back to "/") via sessionStorage.
+// site — a system-status readout with a single scanline pass, not a logo
+// spinner or glowing orb. Skipped on any subsequent mount (client-side nav
+// back to "/") via sessionStorage.
 export default function BootSequence() {
   const [visible, setVisible] = useState(() => {
     try {
@@ -16,7 +16,6 @@ export default function BootSequence() {
     }
   })
   const [checked, setChecked] = useState(0)
-  const [ready, setReady] = useState(false)
   const [fading, setFading] = useState(false)
 
   useEffect(() => {
@@ -34,11 +33,10 @@ export default function BootSequence() {
 
     const timers: number[] = []
     STEPS.forEach((_, i) => {
-      timers.push(window.setTimeout(() => setChecked((n) => Math.max(n, i + 1)), 220 + i * 220))
+      timers.push(window.setTimeout(() => setChecked((n) => Math.max(n, i + 1)), 120 + i * 190))
     })
-    timers.push(window.setTimeout(() => setReady(true), 900))
-    timers.push(window.setTimeout(() => setFading(true), 1150))
-    timers.push(window.setTimeout(() => setVisible(false), 1400))
+    timers.push(window.setTimeout(() => setFading(true), 1050))
+    timers.push(window.setTimeout(() => setVisible(false), 1300))
     return () => timers.forEach((t) => window.clearTimeout(t))
   }, [visible])
 
@@ -46,17 +44,17 @@ export default function BootSequence() {
 
   return (
     <div className={`boot-screen ${fading ? 'boot-fade' : ''}`}>
+      <div className="boot-scan" />
       <div className="boot-panel">
-        <p className="boot-title">Initializing vision engine</p>
+        <p className="boot-title">INITIALIZING VISION SYSTEM</p>
         <ul className="boot-list">
           {STEPS.map((step, i) => (
             <li key={step} className={checked > i ? 'boot-done' : ''}>
               <span>{step}</span>
-              {checked > i && <Check size={12} weight="bold" />}
+              <span className="boot-state">{checked > i ? 'READY' : '···'}</span>
             </li>
           ))}
         </ul>
-        <p className={`boot-ready ${ready ? 'visible' : ''}`}>System ready</p>
       </div>
     </div>
   )
