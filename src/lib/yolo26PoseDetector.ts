@@ -145,9 +145,23 @@ async function createWebgpuSession(reporter?: ProgressReporter): Promise<OrtSess
   return session
 }
 
+// Disabled by default. The WebGPU attempt below only guards against
+// *rejection* (session creation throwing, or ORT's own provider fallback
+// kicking in) — it can't do anything about `navigator.gpu.requestAdapter()`
+// or device creation itself hanging instead of ever resolving or rejecting,
+// which is a real, known failure mode on some GPU driver/browser
+// combinations, and matches a real report of the app hanging on High right
+// after this was added. This project has already hit one hard WebGPU
+// failure before (see tfBackend.ts) — not worth the risk a second time
+// without a way to verify it on real GPU hardware first (this session has
+// none). Flip to true only after confirming success on real hardware, and
+// even then consider adding a hard timeout around the WebGPU attempt itself
+// (not just the overall load) so a hang can't ever block a fallback.
+const TRY_WEBGPU = false
+
 function getSession(reporter?: ProgressReporter): Promise<OrtSession> {
   if (!sessionPromise) {
-    const hasWebGPU = typeof navigator !== 'undefined' && 'gpu' in navigator
+    const hasWebGPU = TRY_WEBGPU && typeof navigator !== 'undefined' && 'gpu' in navigator
     sessionPromise = hasWebGPU
       ? createWebgpuSession(reporter).catch((err) => {
           console.warn('[yolo26] WebGPU session creation failed, falling back to single-threaded WASM', err)
