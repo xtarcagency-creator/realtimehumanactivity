@@ -81,6 +81,7 @@ interface Props {
   alertPulse: number
   loiterThresholdSec: number
   onModelLoadingChange: (loading: boolean) => void
+  onModelLoadProgress: (fraction: number) => void
   onFileDrop: (file: File) => void
   onRequestUpload: () => void
 }
@@ -99,6 +100,7 @@ export default function CameraStage({
   alertPulse,
   loiterThresholdSec,
   onModelLoadingChange,
+  onModelLoadProgress,
   onFileDrop,
   onRequestUpload,
 }: Props) {
@@ -156,8 +158,14 @@ export default function CameraStage({
     qualityRef.current = quality
     let cancelled = false
     onModelLoadingChange(true)
-    preloadModels(quality).finally(() => {
-      if (!cancelled) onModelLoadingChange(false)
+    onModelLoadProgress(0)
+    preloadModels(quality, (fraction) => {
+      if (!cancelled) onModelLoadProgress(fraction)
+    }).finally(() => {
+      if (!cancelled) {
+        onModelLoadProgress(1)
+        onModelLoadingChange(false)
+      }
     })
     return () => {
       cancelled = true

@@ -1,7 +1,8 @@
 import * as poseDetection from '@tensorflow-models/pose-detection'
 import type { DetectionQuality } from './types'
 import { estimateTopDownPoses, estimateTopDownPosesDetailed, resetTopDownTracker, preloadTopDownModels } from './topDownPose'
-import { createMoveNetDetector, MOVENET_MULTIPOSE_LIGHTNING_URL } from './tfBackend'
+import { createMoveNetDetector, warmMoveNetWeights, MOVENET_MULTIPOSE_LIGHTNING_URL } from './tfBackend'
+import { createProgressAggregator } from './downloadProgress'
 
 export type Pose = poseDetection.Pose
 export type Detector = poseDetection.PoseDetector
@@ -19,10 +20,12 @@ const QUALITY_DIMENSION: Record<BottomUpQuality, number> = {
 
 let bottomUpCurrent: { quality: BottomUpQuality; detector: Promise<Detector> } | null = null
 
-function getBottomUpDetector(quality: BottomUpQuality): Promise<Detector> {
+function getBottomUpDetector(quality: BottomUpQuality, onProgress?: (fraction: number) => void): Promise<Detector> {
   if (!bottomUpCurrent || bottomUpCurrent.quality !== quality) {
     const prevPromise = bottomUpCurrent?.detector ?? null
     const nextPromise = (async () => {
+      const reporter = onProgress ? createProgressAggregator(onProgress) : undefined
+      await warmMoveNetWeights(MOVENET_MULTIPOSE_LIGHTNING_URL, 'bottomup', reporter)
       const detector = await createMoveNetDetector({
         modelType: poseDetection.movenet.modelType.MULTIPOSE_LIGHTNING,
         modelUrl: MOVENET_MULTIPOSE_LIGHTNING_URL,
@@ -82,12 +85,17 @@ export async function estimateDetailedPoses(video: HTMLVideoElement): Promise<Po
   return estimateTopDownPosesDetailed(video)
 }
 
-/** Start loading a quality tier's models ahead of the first frame that needs them; resolves once ready. */
-export function preloadModels(quality: DetectionQuality): Promise<void> {
+/**
+ * Start loading a quality tier's models ahead of the first frame that needs
+ * them; resolves once ready. `onProgress` reports real download progress
+ * (0-1) — 1 immediately if the tier's models are already cached from a
+ * previous load.
+ */
+export function preloadModels(quality: DetectionQuality, onProgress?: (fraction: number) => void): Promise<void> {
   if (quality === 'high') {
-    return preloadTopDownModels()
+    return preloadTopDownModels(onProgress)
   }
-  return getBottomUpDetector(quality).then(() => undefined)
+  return getBottomUpDetector(quality, onProgress).then(() => undefined)
 }
 
 export function keypoint(pose: Pose, name: string) {

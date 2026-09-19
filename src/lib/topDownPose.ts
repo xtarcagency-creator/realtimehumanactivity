@@ -1,7 +1,13 @@
 import * as poseDetection from '@tensorflow-models/pose-detection'
 import { detectPersons, preloadYoloModel, type YoloBox } from './yoloDetector'
 import { CentroidTracker } from './tracker'
-import { createMoveNetDetector, MOVENET_MULTIPOSE_LIGHTNING_URL, MOVENET_SINGLEPOSE_THUNDER_URL } from './tfBackend'
+import {
+  createMoveNetDetector,
+  warmMoveNetWeights,
+  MOVENET_MULTIPOSE_LIGHTNING_URL,
+  MOVENET_SINGLEPOSE_THUNDER_URL,
+} from './tfBackend'
+import { createProgressAggregator, type ProgressReporter } from './downloadProgress'
 import type { Pose } from './pose'
 
 // Bottom-up multi-pose models (MoveNet MultiPose) estimate every joint for
@@ -61,25 +67,29 @@ const tracker = new CentroidTracker()
 let cachedBoxes: BoxProposal[] = []
 let framesSinceRefresh = BOX_REFRESH_INTERVAL // force a refresh on the first call
 
-function getSinglePoseDetector() {
+function getSinglePoseDetector(reporter?: ProgressReporter) {
   if (!singlePoseDetectorPromise) {
-    singlePoseDetectorPromise = createMoveNetDetector({
-      modelType: poseDetection.movenet.modelType.SINGLEPOSE_THUNDER,
-      modelUrl: MOVENET_SINGLEPOSE_THUNDER_URL,
-    })
+    singlePoseDetectorPromise = warmMoveNetWeights(MOVENET_SINGLEPOSE_THUNDER_URL, 'thunder', reporter).then(() =>
+      createMoveNetDetector({
+        modelType: poseDetection.movenet.modelType.SINGLEPOSE_THUNDER,
+        modelUrl: MOVENET_SINGLEPOSE_THUNDER_URL,
+      }),
+    )
   }
   return singlePoseDetectorPromise
 }
 
-function getProposalDetector() {
+function getProposalDetector(reporter?: ProgressReporter) {
   if (!proposalDetectorPromise) {
-    proposalDetectorPromise = createMoveNetDetector({
-      modelType: poseDetection.movenet.modelType.MULTIPOSE_LIGHTNING,
-      modelUrl: MOVENET_MULTIPOSE_LIGHTNING_URL,
-      enableTracking: false,
-      multiPoseMaxDimension: MULTIPOSE_PROPOSAL_DIMENSION,
-      minPoseScore: 0.1,
-    })
+    proposalDetectorPromise = warmMoveNetWeights(MOVENET_MULTIPOSE_LIGHTNING_URL, 'proposal', reporter).then(() =>
+      createMoveNetDetector({
+        modelType: poseDetection.movenet.modelType.MULTIPOSE_LIGHTNING,
+        modelUrl: MOVENET_MULTIPOSE_LIGHTNING_URL,
+        enableTracking: false,
+        multiPoseMaxDimension: MULTIPOSE_PROPOSAL_DIMENSION,
+        minPoseScore: 0.1,
+      }),
+    )
   }
   return proposalDetectorPromise
 }
@@ -90,9 +100,19 @@ export function resetTopDownTracker() {
   framesSinceRefresh = BOX_REFRESH_INTERVAL
 }
 
-/** Warm all three models (YOLO, Thunder, MultiPose-proposal) so switching to High doesn't stall the first frame. */
-export function preloadTopDownModels(): Promise<void> {
-  return Promise.all([preloadYoloModel(), getSinglePoseDetector(), getProposalDetector()]).then(() => undefined)
+/**
+ * Warm all three models (YOLO, Thunder, MultiPose-proposal) so switching to
+ * High doesn't stall the first frame. `onProgress` gets a single 0-1
+ * fraction combining real byte progress across all three downloads,
+ * weighted by each file's actual size — not three separate bars, since
+ * they're loading concurrently and the user only cares how much of the
+ * whole switch is left.
+ */
+export function preloadTopDownModels(onProgress?: (fraction: number) => void): Promise<void> {
+  const reporter = onProgress ? createProgressAggregator(onProgress) : undefined
+  return Promise.all([preloadYoloModel(reporter), getSinglePoseDetector(reporter), getProposalDetector(reporter)]).then(
+    () => undefined,
+  )
 }
 
 function iou(a: BoxProposal, b: BoxProposal): number {

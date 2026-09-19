@@ -677,6 +677,22 @@
   font-size: 11.5px;
 }
 
+.progress-bar {
+  margin-top: 10px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--primary);
+  transition: width 160ms ease;
+}
+
 .switch-confirm {
   margin-top: 8px;
   padding: 8px 10px;

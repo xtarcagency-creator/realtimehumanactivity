@@ -1,4 +1,5 @@
 import * as ort from 'onnxruntime-web'
+import { fetchBuffer, type ProgressReporter } from './downloadProgress'
 
 // YOLO11s (COCO), exported to ONNX at 640x640 input, bundled locally at
 // public/models/yolo11s.onnx — no runtime dependency on a model-hosting CDN.
@@ -31,8 +32,13 @@ export interface YoloBox {
 let sessionPromise: Promise<ort.InferenceSession> | null = null
 let letterboxCanvas: HTMLCanvasElement | null = null
 
-function getSession(): Promise<ort.InferenceSession> {
+function getSession(reporter?: ProgressReporter): Promise<ort.InferenceSession> {
   if (!sessionPromise) {
+    // Fetched as a plain ArrayBuffer ourselves (see downloadProgress.ts) so
+    // real download progress is available, then handed to ORT directly —
+    // InferenceSession.create accepts a buffer as well as a URL, so this
+    // doesn't cost a second fetch.
+    //
     // WASM only. WebGPU was tried here too and dropped: ONNX Runtime's
     // WebGPU backend needs its own much larger wasm binary (~28MB vs ~14MB
     // for plain WASM) fetched and a GPU pipeline compiled before the first
@@ -40,14 +46,16 @@ function getSession(): Promise<ort.InferenceSession> {
     // measured speed benefit, and this project already hit real WebGPU
     // reliability problems elsewhere (see tfBackend.ts). Not worth paying
     // the extra download for an unproven win.
-    sessionPromise = ort.InferenceSession.create(MODEL_URL, { executionProviders: ['wasm'] })
+    sessionPromise = fetchBuffer(MODEL_URL, 'yolo', reporter).then((buf) =>
+      ort.InferenceSession.create(buf, { executionProviders: ['wasm'] }),
+    )
   }
   return sessionPromise
 }
 
 /** Preload the model so the first detection call isn't slowed by the fetch/compile. */
-export function preloadYoloModel(): Promise<ort.InferenceSession> {
-  return getSession()
+export function preloadYoloModel(reporter?: ProgressReporter): Promise<ort.InferenceSession> {
+  return getSession(reporter)
 }
 
 interface Letterbox {

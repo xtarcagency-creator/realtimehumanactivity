@@ -36,6 +36,7 @@ function Analyser() {
   const [alertPulse, setAlertPulse] = useState(0)
   const [loiterThresholdSec, setLoiterThresholdSec] = useState(DEFAULT_LOITER_THRESHOLD_SEC)
   const [modelLoading, setModelLoading] = useState(false)
+  const [modelLoadProgress, setModelLoadProgress] = useState(0)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -104,7 +105,7 @@ function Analyser() {
           {modelLoading ? (
             <span className="status-pill status-pill-loading">
               <CircleNotch size={11} weight="bold" className="spin" />
-              Loading model
+              Loading model {Math.round(modelLoadProgress * 100)}%
             </span>
           ) : (
             <span className="status-pill status-pill-ready">
@@ -155,6 +156,7 @@ function Analyser() {
           alertPulse={alertPulse}
           loiterThresholdSec={loiterThresholdSec}
           onModelLoadingChange={setModelLoading}
+          onModelLoadProgress={setModelLoadProgress}
           onFileDrop={handleFile}
           onRequestUpload={() => fileInputRef.current?.click()}
         />
@@ -174,6 +176,7 @@ function Analyser() {
           loiterThresholdSec={loiterThresholdSec}
           onLoiterThresholdChange={setLoiterThresholdSec}
           modelLoading={modelLoading}
+          modelLoadProgress={modelLoadProgress}
         />
       </main>
     </div>

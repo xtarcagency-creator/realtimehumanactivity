@@ -1,6 +1,7 @@
 import * as tf from '@tensorflow/tfjs-core'
 import '@tensorflow/tfjs-backend-webgl'
 import * as poseDetection from '@tensorflow-models/pose-detection'
+import { fetchBuffer, type ProgressReporter } from './downloadProgress'
 
 // MoveNet weights, bundled locally — same as YOLO (see yoloDetector.ts) and
 // for the same reason: no runtime dependency on a model-hosting CDN. These
@@ -38,4 +39,25 @@ export async function createMoveNetDetector(
 ): Promise<poseDetection.PoseDetector> {
   await ensureBackend()
   return poseDetection.createDetector(poseDetection.SupportedModels.MoveNet, config)
+}
+
+interface WeightsManifestEntry {
+  paths: string[]
+}
+
+// pose-detection's own MoveNet loader doesn't expose download progress, so
+// this fetches the model's json + weight files ourselves first (reporting
+// real bytes as they arrive) purely to prime the browser's HTTP cache —
+// createMoveNetDetector's own subsequent fetch of the same URLs then hits
+// that cache and resolves near-instantly instead of downloading again.
+const warmedModelUrls = new Set<string>()
+
+export async function warmMoveNetWeights(modelUrl: string, key: string, reporter?: ProgressReporter): Promise<void> {
+  if (warmedModelUrls.has(modelUrl)) return
+  const jsonBuf = await fetchBuffer(modelUrl, `${key}-json`, reporter)
+  const manifest = JSON.parse(new TextDecoder().decode(jsonBuf)) as { weightsManifest: WeightsManifestEntry[] }
+  const base = modelUrl.slice(0, modelUrl.lastIndexOf('/') + 1)
+  const binPaths = manifest.weightsManifest.flatMap((group) => group.paths)
+  await Promise.all(binPaths.map((path) => fetchBuffer(base + path, `${key}-${path}`, reporter)))
+  warmedModelUrls.add(modelUrl)
 }

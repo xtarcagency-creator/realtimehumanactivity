@@ -57,6 +57,7 @@ interface Props {
   loiterThresholdSec: number
   onLoiterThresholdChange: (sec: number) => void
   modelLoading: boolean
+  modelLoadProgress: number
 }
 
 type SectionKey = 'live' | 'detection' | 'zones' | 'people' | 'events'
@@ -77,6 +78,7 @@ export default function Dashboard({
   loiterThresholdSec,
   onLoiterThresholdChange,
   modelLoading,
+  modelLoadProgress,
 }: Props) {
   const [collapsed, setCollapsed] = useState<Record<SectionKey, boolean>>({
     live: false,
@@ -136,11 +138,16 @@ export default function Dashboard({
               ) : (
                 <CheckCircle size={13} weight="fill" style={{ color: 'var(--good)' }} />
               )}
-              {modelLoading ? 'Loading' : 'Ready'}
+              {modelLoading ? `Loading ${Math.round(modelLoadProgress * 100)}%` : 'Ready'}
             </span>
             <span className="stat-label">status</span>
           </div>
         </div>
+        {modelLoading && (
+          <div className="progress-bar" role="progressbar" aria-valuenow={Math.round(modelLoadProgress * 100)} aria-valuemin={0} aria-valuemax={100}>
+            <div className="progress-bar-fill" style={{ width: `${Math.max(4, modelLoadProgress * 100)}%` }} />
+          </div>
+        )}
       </Section>
 
       <Section
