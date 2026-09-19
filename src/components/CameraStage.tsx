@@ -341,7 +341,7 @@ export default function CameraStage({
 
       setStatus('')
 
-      // Paused, there's no real-time FPS budget to protect — run YOLO26n-pose
+      // Paused, there's no real-time FPS budget to protect — run YOLO26s-pose
       // uncapped on just this one frame, instead of the live loop's capped
       // pass.
       // Superseded (via inspectToken) by a newer pause/seek before it

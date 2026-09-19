@@ -56,7 +56,7 @@ function getBottomUpDetector(quality: BottomUpQuality, onProgress?: (fraction: n
 
 /**
  * Fast/Balanced: single-pass MoveNet MultiPose over the whole frame
- * (WebGL). High: single-pass YOLO26n-pose (see topDownPose.ts /
+ * (WebGL). High: single-pass YOLO26s-pose (see topDownPose.ts /
  * yolo26PoseDetector.ts) — a heavier, more accurate model that holds up
  * better when people are small, close together, or overlapping (e.g.
  * low-res CCTV-style footage), at a real FPS cost. Pure ONNX Runtime/WASM,
@@ -75,7 +75,7 @@ export function resetTracking() {
 }
 
 /**
- * Always runs YOLO26n-pose uncapped, regardless of the currently selected
+ * Always runs YOLO26s-pose uncapped, regardless of the currently selected
  * quality tier — meant for inspecting a single paused frame, where there's
  * no real-time FPS budget to protect. Loads the model on first use if the
  * active quality tier hasn't already warmed it (a real, one-time delay on

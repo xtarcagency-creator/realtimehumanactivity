@@ -1,18 +1,24 @@
-// YOLO26n-pose (Ultralytics, COCO), exported to ONNX at 640x640 input,
-// bundled locally at public/models/yolo26n-pose.onnx. Replaces the old
+// YOLO26s-pose (Ultralytics, COCO), exported to ONNX at 640x640 input,
+// bundled locally at public/models/yolo26s-pose.onnx. Replaces the old
 // three-model High pipeline (YOLO11s box detector + MoveNet Thunder +
 // MoveNet MultiPose as a second box proposal) with a single pass: one model
-// outputs both person boxes and all 17 keypoints directly, at under a third
-// of the combined download size (~12MB vs ~74MB) and — critically — no
-// WebGL involved at all, just ONNX Runtime/WASM (the same runtime already
-// used for the old box-only YOLO11s), so none of the WebGL model-creation
-// contention/hangs that pipeline kept hitting apply here.
+// outputs both person boxes and all 17 keypoints directly, and — critically
+// — no WebGL involved at all, just ONNX Runtime/WASM (the same runtime
+// already used for the old box-only YOLO11s), so none of the WebGL
+// model-creation contention/hangs that pipeline kept hitting apply here.
+//
+// The "s" (small) size, not "n" (nano) — nano loaded fast but had real
+// accuracy headroom given up for that speed; small trades some of that
+// speed back for meaningfully better detection, particularly on smaller or
+// more distant people. Same architecture family and output layout as nano
+// (same decode logic below), just a larger backbone.
 //
 // Verified against the reference PyTorch model (Ultralytics' own
 // model.predict, not just the export step) on a real photo before wiring
 // this in: decoded boxes and keypoints from this exact letterbox+decode
 // logic matched the reference output closely (same detections, same
-// confidence range, keypoint coordinates within ~1px).
+// confidence range, box coordinates within ~6px on this size, keypoints
+// within ~1px on nano).
 import * as ortWasm from 'onnxruntime-web/wasm'
 import * as ortWebgpu from 'onnxruntime-web/webgpu'
 import { fetchBuffer, type ProgressReporter } from './downloadProgress'
@@ -21,11 +27,11 @@ import type { Pose } from './pose'
 type Ort = typeof ortWasm
 type OrtSession = Awaited<ReturnType<Ort['InferenceSession']['create']>>
 
-const MODEL_URL = '/models/yolo26n-pose.onnx'
+const MODEL_URL = '/models/yolo26s-pose.onnx'
 // Exact size of the bundled file above, used only as a progress-bar
 // fallback (see fetchBuffer) when a CDN drops Content-Length in flight.
 // Update if the model file is ever replaced.
-const MODEL_EXPECTED_BYTES = 12111334
+const MODEL_EXPECTED_BYTES = 41844706
 // The plain (smaller, single-threaded-only) wasm runtime, used whenever
 // WebGPU isn't attempted or fails.
 const WASM_URL = '/models/ort-wasm-simd-threaded.wasm'

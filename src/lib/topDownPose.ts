@@ -5,7 +5,7 @@ import type { Pose } from './pose'
 
 // High used to be a three-model ensemble (YOLO11s box detector + MoveNet
 // Thunder per-person pose + MoveNet MultiPose as a second box proposal) —
-// replaced with a single YOLO26n-pose pass (see yolo26PoseDetector.ts) that
+// replaced with a single YOLO26s-pose pass (see yolo26PoseDetector.ts) that
 // outputs boxes and all 17 keypoints directly per person in one forward
 // pass. That old pipeline repeatedly hit real, hard-to-diagnose stalls
 // creating two separate WebGL graph models concurrently (plus a third,
