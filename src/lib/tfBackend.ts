@@ -16,6 +16,15 @@ import { fetchBuffer, type ProgressReporter } from './downloadProgress'
 export const MOVENET_MULTIPOSE_LIGHTNING_URL = '/models/movenet-multipose.json'
 export const MOVENET_SINGLEPOSE_THUNDER_URL = '/models/movenet-thunder.json'
 
+// Exact sizes of the bundled files above, used only as a progress-bar
+// fallback (see warmMoveNetWeights/fetchBuffer) when a CDN drops
+// Content-Length in flight. Update these if the model files themselves are
+// ever replaced.
+const MOVENET_FILE_SIZES: Record<string, { json: number; bin: number }> = {
+  [MOVENET_MULTIPOSE_LIGHTNING_URL]: { json: 240464, bin: 9448838 },
+  [MOVENET_SINGLEPOSE_THUNDER_URL]: { json: 161923, bin: 12477112 },
+}
+
 // WebGPU was tried here and reverted: its video-frame import
 // (importExternalTexture) hit a real "doesn't have back resource" failure
 // on real hardware, on every single frame, effectively producing zero
@@ -54,10 +63,11 @@ const warmedModelUrls = new Set<string>()
 
 export async function warmMoveNetWeights(modelUrl: string, key: string, reporter?: ProgressReporter): Promise<void> {
   if (warmedModelUrls.has(modelUrl)) return
-  const jsonBuf = await fetchBuffer(modelUrl, `${key}-json`, reporter)
+  const knownSizes = MOVENET_FILE_SIZES[modelUrl]
+  const jsonBuf = await fetchBuffer(modelUrl, `${key}-json`, reporter, knownSizes?.json)
   const manifest = JSON.parse(new TextDecoder().decode(jsonBuf)) as { weightsManifest: WeightsManifestEntry[] }
   const base = modelUrl.slice(0, modelUrl.lastIndexOf('/') + 1)
   const binPaths = manifest.weightsManifest.flatMap((group) => group.paths)
-  await Promise.all(binPaths.map((path) => fetchBuffer(base + path, `${key}-${path}`, reporter)))
+  await Promise.all(binPaths.map((path) => fetchBuffer(base + path, `${key}-${path}`, reporter, knownSizes?.bin)))
   warmedModelUrls.add(modelUrl)
 }

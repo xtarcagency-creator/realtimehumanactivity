@@ -11,6 +11,10 @@ import { fetchBuffer, type ProgressReporter } from './downloadProgress'
 // and diffing against Ultralytics' own high-level prediction on the same
 // images before swapping the model file — no decode logic changes needed.
 const MODEL_URL = '/models/yolo11s.onnx'
+// Exact size of the bundled file above, used only as a progress-bar
+// fallback (see fetchBuffer) when a CDN drops Content-Length in flight.
+// Update if the model file is ever replaced.
+const MODEL_EXPECTED_BYTES = 38051718
 const INPUT_SIZE = 640
 const PERSON_CLASS_INDEX = 0 // COCO class 0 = person
 // Lowered from 0.25 — this is only the primary detector; MultiPose's own box
@@ -46,7 +50,7 @@ function getSession(reporter?: ProgressReporter): Promise<ort.InferenceSession> 
     // measured speed benefit, and this project already hit real WebGPU
     // reliability problems elsewhere (see tfBackend.ts). Not worth paying
     // the extra download for an unproven win.
-    sessionPromise = fetchBuffer(MODEL_URL, 'yolo', reporter).then((buf) =>
+    sessionPromise = fetchBuffer(MODEL_URL, 'yolo', reporter, MODEL_EXPECTED_BYTES).then((buf) =>
       ort.InferenceSession.create(buf, { executionProviders: ['wasm'] }),
     )
   }

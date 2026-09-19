@@ -33,12 +33,28 @@ export function createProgressAggregator(onFraction: (fraction: number) => void)
   }
 }
 
-/** Fetches a URL to an ArrayBuffer, reporting real bytes-loaded progress as they arrive. */
-export async function fetchBuffer(url: string, key: string, reporter?: ProgressReporter): Promise<ArrayBuffer> {
+/**
+ * Fetches a URL to an ArrayBuffer, reporting real bytes-loaded progress as
+ * they arrive. `expectedBytes` is used as the progress denominator whenever
+ * Content-Length is missing from the response — CDNs (Vercel's included)
+ * can drop it if a response gets re-compressed or re-chunked in flight,
+ * which otherwise left the progress bar stuck at 0% for the whole download:
+ * real bytes were arriving, but with no total to divide them by, the
+ * aggregator had nothing to compute a fraction from. These are static,
+ * locally-bundled files we control, so their size is known ahead of time —
+ * an approximate fallback here is still an honest, close estimate, not a
+ * fake timer.
+ */
+export async function fetchBuffer(
+  url: string,
+  key: string,
+  reporter?: ProgressReporter,
+  expectedBytes?: number,
+): Promise<ArrayBuffer> {
   const res = await fetch(url)
   if (!res.ok) throw new Error(`Failed to fetch ${url} (${res.status})`)
   const totalHeader = res.headers.get('content-length')
-  const total = totalHeader ? Number(totalHeader) : null
+  const total = totalHeader ? Number(totalHeader) : (expectedBytes ?? null)
   const reader = res.body?.getReader()
   if (!reader) {
     // Streaming reads aren't available (older browser, or a response the
