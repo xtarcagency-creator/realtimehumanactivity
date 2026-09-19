@@ -1,7 +1,7 @@
 import * as poseDetection from '@tensorflow-models/pose-detection'
 import type { DetectionQuality } from './types'
 import { estimateTopDownPoses, estimateTopDownPosesDetailed, resetTopDownTracker, preloadTopDownModels } from './topDownPose'
-import { createMoveNetDetector } from './tfBackend'
+import { createMoveNetDetector, MOVENET_MULTIPOSE_LIGHTNING_URL } from './tfBackend'
 
 export type Pose = poseDetection.Pose
 export type Detector = poseDetection.PoseDetector
@@ -25,6 +25,7 @@ function getBottomUpDetector(quality: BottomUpQuality): Promise<Detector> {
     const nextPromise = (async () => {
       const detector = await createMoveNetDetector({
         modelType: poseDetection.movenet.modelType.MULTIPOSE_LIGHTNING,
+        modelUrl: MOVENET_MULTIPOSE_LIGHTNING_URL,
         enableTracking: true,
         trackerType: poseDetection.TrackerType.BoundingBox,
         // Default maxAge is 1000ms — raised to match the top-down pipeline's own
