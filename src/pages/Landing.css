@@ -555,12 +555,11 @@
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .egrid-loop-box,
-  .egrid-loop-dot {
-    animation: none;
-  }
-}
+/* Deliberately not gated behind prefers-reduced-motion, matching the rest
+   of the page's motion policy (see useSectionScrollProgress in Landing.tsx)
+   — this small looping orbit is subtle, contained, and not the kind of
+   large/vestibular-triggering motion that setting exists to suppress; a
+   browser/OS reporting reduced-motion shouldn't make it appear stuck. */
 
 /* ==================================================================
    SYSTEM ARCHITECTURE
@@ -724,12 +723,6 @@
   }
   50% {
     opacity: 1;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .tv-box {
-    animation: none;
   }
 }
 
