@@ -295,6 +295,17 @@
   background: rgba(244, 244, 241, 0.04);
 }
 
+/* ---- standard content width — matches the nav's own container exactly, so
+   every section's left/right edge lines up with the logo and CTA above it.
+   Background color belongs on the full-bleed <section> (.lt-dark/.lt-light);
+   this only constrains the content inside it. ---- */
+.container {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding-left: 32px;
+  padding-right: 32px;
+}
+
 /* ---- shared labels ---- */
 .section-index {
   display: block;
@@ -332,16 +343,25 @@
   height: 220vh;
 }
 
+.hero-block.is-static {
+  height: auto;
+}
+
 .hero-sticky {
   position: sticky;
   top: 0;
   height: 100vh;
-  max-width: 1400px;
-  margin: 0 auto;
-  padding: 28px 32px 0;
+  padding-top: 28px;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+.hero-block.is-static .hero-sticky {
+  position: static;
+  height: auto;
+  padding-bottom: 60px;
+  overflow: visible;
 }
 
 .hero-meta-row {
@@ -403,289 +423,15 @@
   will-change: transform;
 }
 
-.hero-product .hero-frame {
-  width: min(1400px, 94vw);
-}
-
-/* ---- decorative demo mock (DemoPanel.tsx) ---- */
-.hero-frame {
-  position: relative;
-  border-radius: 8px;
-  border: 1px solid var(--l-line-dark);
-  background: var(--l-dark-surface);
-  overflow: hidden;
-  box-shadow: 0 40px 100px rgba(0, 0, 0, 0.6);
-}
-
-.hero-frame-bar {
-  display: flex;
-  gap: 6px;
-  padding: 11px 14px;
-  border-bottom: 1px solid var(--l-line-dark);
-}
-
-.hero-frame-bar span {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--l-line-dark);
-}
-
-.demo-app {
-  background: var(--l-ink);
-  aspect-ratio: 16 / 8;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.demo-nav {
-  height: 36px;
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 16px;
-  border-bottom: 1px solid var(--l-line-dark);
-  font-size: 11px;
-}
-
-.demo-brand {
-  font-weight: 600;
-  color: var(--l-light-text);
-}
-
-.demo-status {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  color: var(--l-good);
-  font-weight: 500;
-}
-
-.demo-body {
-  flex: 1;
-  display: flex;
-  min-height: 0;
-}
-
-.demo-stage {
-  flex: 0 1 74%;
-  min-width: 0;
-  padding: 12px;
-}
-
-.demo-video {
-  position: relative;
+.hero-product .finale-frame {
   width: 100%;
-  height: 100%;
-  background: #000;
-  border-radius: 4px;
-  overflow: hidden;
-}
-
-.demo-reveal {
-  opacity: 0;
-  transition: opacity 400ms ease;
-}
-
-.demo-reveal.visible {
-  opacity: 1;
-}
-
-.demo-box {
-  position: absolute;
-  border: 1.5px solid var(--l-cyan);
-  border-radius: 2px;
-}
-
-.demo-box-muted {
-  border-color: #565d63;
-}
-
-.demo-box-label {
-  position: absolute;
-  top: -16px;
-  left: -1.5px;
-  font-family: var(--f-mono);
-  font-size: 8.5px;
-  font-weight: 700;
-  color: #061014;
-  background: var(--l-cyan);
-  padding: 1px 5px;
-  border-radius: 2px 2px 0 0;
-  white-space: nowrap;
-}
-
-.demo-box-muted .demo-box-label {
-  background: #565d63;
-}
-
-.demo-skeleton {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  stroke: var(--l-cyan);
-  stroke-width: 1.6;
-  fill: none;
-  opacity: 0.9;
-}
-
-.demo-skeleton circle {
-  fill: var(--l-cyan);
-  stroke: none;
-}
-
-.demo-zone {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-}
-
-.demo-zone polygon {
-  fill: rgba(197, 154, 71, 0.14);
-  stroke: var(--l-warn);
-  stroke-width: 1.2;
-}
-
-.demo-zone-label {
-  position: absolute;
-  font-family: var(--f-mono);
-  font-size: 8.5px;
-  font-weight: 600;
-  color: var(--l-warn);
-  background: rgba(9, 10, 11, 0.75);
-  padding: 1px 5px;
-  border-radius: 3px;
-}
-
-.demo-fps {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  font-family: var(--f-mono);
-  font-size: 9px;
-  color: #f5f5f5;
-  background: rgba(9, 10, 11, 0.65);
-  padding: 2px 7px;
-  border-radius: 3px;
-  letter-spacing: 0.02em;
-}
-
-.demo-toast {
-  position: absolute;
-  left: 8px;
-  bottom: 8px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 9px;
-  font-weight: 500;
-  color: #f5f5f5;
-  background: rgba(17, 18, 20, 0.94);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  padding: 5px 9px;
-  border-radius: 4px;
-  white-space: nowrap;
-}
-
-.demo-toast-dot {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--l-warn);
-  flex-shrink: 0;
-}
-
-.demo-inspector {
-  flex: 0 1 26%;
-  min-width: 116px;
-  border-left: 1px solid var(--l-line-dark);
-  padding: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.demo-stat-row {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 1px;
-  background: var(--l-line-dark);
-  border: 1px solid var(--l-line-dark);
-  border-radius: 4px;
-  overflow: hidden;
-}
-
-.demo-stat {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  padding: 7px 8px;
-  background: var(--l-dark-surface);
-}
-
-.demo-stat b {
-  font-family: var(--f-mono);
-  font-size: 11.5px;
-  font-weight: 600;
-  color: var(--l-light-text);
-}
-
-.demo-stat span {
-  font-size: 7.5px;
-  color: var(--l-muted);
-}
-
-.demo-mini {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-height: 16px;
-}
-
-.demo-mini-title {
-  font-size: 9px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--l-muted);
-}
-
-.demo-mini-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 9px;
-  color: var(--l-light-text);
-}
-
-.demo-dot {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  flex-shrink: 0;
-  background: var(--l-muted);
-}
-
-.demo-dot-warn {
-  background: var(--l-warn);
-}
-
-.demo-dot-info {
-  background: var(--l-muted);
 }
 
 /* ==================================================================
    THE QUESTION
    ================================================================== */
 .question {
-  max-width: 1000px;
-  margin: 0 auto;
-  padding: 120px 32px 80px;
+  padding: 120px 0 80px;
 }
 
 .question-text {
@@ -709,9 +455,7 @@
    EDITORIAL GRID
    ================================================================== */
 .egrid {
-  max-width: 1400px;
-  margin: 0 auto;
-  padding: 40px 32px 120px;
+  padding: 40px 0 120px;
 }
 
 .egrid-lede {
@@ -817,9 +561,7 @@
    SYSTEM ARCHITECTURE
    ================================================================== */
 .architecture {
-  max-width: 1100px;
-  margin: 0 auto;
-  padding: 110px 32px;
+  padding: 110px 0;
 }
 
 .architecture-list {
@@ -877,33 +619,34 @@
    TRACKING VISUAL
    ================================================================== */
 .tracking-visual {
-  max-width: 1100px;
-  margin: 0 auto;
-  padding: 40px 32px 140px;
+  padding: 40px 0 140px;
 }
 
 .tv-composition {
   position: relative;
-  min-height: 62vh;
+  min-height: 68vh;
+  padding: 48px 0;
   display: flex;
   align-items: center;
   justify-content: center;
+  overflow: visible;
 }
 
 .tv-subject {
   position: relative;
-  width: min(46vw, 320px);
+  width: min(40vw, 280px);
   display: flex;
   align-items: center;
   justify-content: center;
+  overflow: visible;
 }
 
 .tv-p01 {
   position: absolute;
-  top: -8%;
+  top: -22%;
   left: 50%;
   transform: translateX(-50%);
-  font-size: clamp(48px, 7vw, 84px);
+  font-size: clamp(40px, 6vw, 72px);
   font-weight: 650;
   letter-spacing: -0.02em;
   color: rgba(244, 244, 241, 0.06);
@@ -1006,9 +749,7 @@
    DETECTION MODES — horizontal precision continuum
    ================================================================== */
 .modes {
-  max-width: 1000px;
-  margin: 0 auto;
-  padding: 110px 32px;
+  padding: 110px 0;
 }
 
 .modes-continuum {
@@ -1122,6 +863,17 @@
   height: 300vh;
 }
 
+.signature.is-static {
+  height: auto;
+}
+
+.signature.is-static .signature-sticky {
+  position: static;
+  height: auto;
+  padding: 120px 0;
+  overflow: visible;
+}
+
 .signature-sticky {
   position: sticky;
   top: 0;
@@ -1219,6 +971,7 @@
 .skeleton-figure {
   width: 100%;
   height: auto;
+  overflow: visible;
 }
 
 .skeleton-bone {
@@ -1274,9 +1027,7 @@
    REAL WORLD CONDITIONS
    ================================================================== */
 .conditions {
-  max-width: 1100px;
-  margin: 0 auto;
-  padding: 110px 32px;
+  padding: 110px 0;
 }
 
 .conditions-list {
@@ -1323,9 +1074,7 @@
    PERFORMANCE
    ================================================================== */
 .performance {
-  max-width: 1100px;
-  margin: 0 auto;
-  padding: 110px 32px;
+  padding: 110px 0;
 }
 
 .performance-grid {
@@ -1371,9 +1120,7 @@
    PRIVACY / LOCAL COMPUTE
    ================================================================== */
 .privacy {
-  max-width: 1000px;
-  margin: 0 auto;
-  padding: 40px 32px 130px;
+  padding: 40px 0 130px;
 }
 
 .pipeline-row {
@@ -1426,9 +1173,7 @@
    ENGINEERING CONSTRAINTS
    ================================================================== */
 .constraints {
-  max-width: 1000px;
-  margin: 0 auto;
-  padding: 110px 32px;
+  padding: 110px 0;
 }
 
 .constraints-list {
@@ -1471,9 +1216,7 @@
    PRODUCT FINALE
    ================================================================== */
 .finale {
-  max-width: 1560px;
-  margin: 0 auto;
-  padding: 110px 16px 60px;
+  padding: 110px 0 60px;
   text-align: center;
 }
 
@@ -1526,9 +1269,7 @@
    AGENCY CTA
    ================================================================== */
 .agency-cta {
-  max-width: 1000px;
-  margin: 0 auto;
-  padding: 130px 32px;
+  padding: 130px 0;
 }
 
 .agency-cta-inner h2 {
@@ -1556,18 +1297,19 @@
 
 /* ---- footer ---- */
 .landing-footer {
-  max-width: 1400px;
-  margin: 0 auto;
-  padding: 28px 32px;
   border-top: 1px solid var(--l-line-dark);
   background: var(--l-ink);
+  color: var(--l-muted);
+}
+
+.landing-footer-inner {
+  padding: 28px 32px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
   gap: 10px 20px;
   font-size: 12.5px;
-  color: var(--l-muted);
 }
 
 .landing-footer a {
@@ -1598,20 +1340,13 @@
 }
 
 @media (max-width: 860px) {
-  .hero-sticky,
-  .question,
-  .egrid,
-  .architecture,
-  .tracking-visual,
-  .modes,
-  .conditions,
-  .performance,
-  .privacy,
-  .constraints,
-  .finale,
-  .agency-cta,
-  .landing-footer,
+  .container,
   .landing-nav-inner {
+    padding-left: 20px;
+    padding-right: 20px;
+  }
+
+  .landing-footer-inner {
     padding-left: 20px;
     padding-right: 20px;
   }
@@ -1622,14 +1357,6 @@
 
   .egrid-cell {
     border-bottom: 1px solid var(--l-line-light);
-  }
-
-  .demo-inspector {
-    display: none;
-  }
-
-  .demo-stage {
-    flex-basis: 100%;
   }
 }
 
@@ -1649,10 +1376,5 @@
 
   .landing-logo {
     font-size: 12px;
-  }
-
-  .demo-fps,
-  .demo-toast {
-    font-size: 8px;
   }
 }
