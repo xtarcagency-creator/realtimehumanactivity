@@ -311,8 +311,14 @@ export default function Landing() {
                 <b>A</b>
               </span>
               <div className="tv-subject">
-                <span className="tv-p01">P-01</span>
-                <SkeletonFigure />
+                <div className="tv-box">
+                  <span className="tv-box-label mono">P-01 · .94</span>
+                  <span className="tv-box-corner tv-box-corner-tl" />
+                  <span className="tv-box-corner tv-box-corner-tr" />
+                  <span className="tv-box-corner tv-box-corner-bl" />
+                  <span className="tv-box-corner tv-box-corner-br" />
+                  <span className="tv-box-dot" />
+                </div>
               </div>
               <span className="tv-tag tv-tag-bl mono">
                 DWELL
@@ -503,8 +509,8 @@ export default function Landing() {
               </div>
               <img
                 className="finale-img"
-                src="/landing/dashboard-preview.png"
-                alt="Realtime Activity Analyzer interface showing multi-person pose tracking, detection zones and the live event log"
+                src="/landing/dashboard-preview-finale.png"
+                alt="Realtime Activity Analyzer interface showing multi-person pose tracking and live detection"
                 width={1400}
                 height={900}
               />

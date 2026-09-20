@@ -406,14 +406,30 @@
   flex: 1;
   min-height: 0;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: center;
   transform-origin: bottom center;
   will-change: transform;
 }
 
+/* Constrained by height here (unlike the finale section, where the frame
+   sizes from width) — the hero has a fixed 100vh budget shared with the
+   headline above it, so the screenshot must shrink to fit vertically
+   rather than overflow past the fold. */
 .hero-product .finale-frame {
-  width: 100%;
+  height: 100%;
+  width: auto;
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.hero-product .finale-img {
+  flex: 1;
+  min-height: 0;
+  width: auto;
+  height: 100%;
+  object-fit: contain;
 }
 
 /* ==================================================================
@@ -630,23 +646,91 @@
   overflow: visible;
 }
 
-.tv-p01 {
+/* A tracked bounding box, not a pose skeleton — that visual belongs to the
+   signature section further down; this one is about spatial tracking. */
+.tv-box {
+  position: relative;
+  z-index: 1;
+  width: 140px;
+  height: 200px;
+  border: 1px solid color-mix(in srgb, var(--l-cyan) 22%, transparent);
+  animation: tv-box-pulse 2600ms ease-in-out infinite;
+}
+
+.tv-box-label {
   position: absolute;
-  top: -22%;
-  left: 50%;
-  transform: translateX(-50%);
-  font-size: clamp(40px, 6vw, 72px);
-  font-weight: 650;
-  letter-spacing: -0.02em;
-  color: rgba(244, 244, 241, 0.06);
-  z-index: 0;
+  top: -24px;
+  left: -1.5px;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--l-ink);
+  background: var(--l-cyan);
+  padding: 3px 7px;
+  border-radius: 2px;
   white-space: nowrap;
 }
 
-.tv-subject .skeleton-figure {
-  position: relative;
-  z-index: 1;
-  width: 100%;
+.tv-box-corner {
+  position: absolute;
+  width: 22px;
+  height: 22px;
+  border: 1.5px solid var(--l-cyan);
+}
+
+.tv-box-corner-tl {
+  top: 0;
+  left: 0;
+  border-right: none;
+  border-bottom: none;
+}
+
+.tv-box-corner-tr {
+  top: 0;
+  right: 0;
+  border-left: none;
+  border-bottom: none;
+}
+
+.tv-box-corner-bl {
+  bottom: 0;
+  left: 0;
+  border-right: none;
+  border-top: none;
+}
+
+.tv-box-corner-br {
+  bottom: 0;
+  right: 0;
+  border-left: none;
+  border-top: none;
+}
+
+.tv-box-dot {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--l-cyan);
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 0 7px color-mix(in srgb, var(--l-cyan) 16%, transparent);
+}
+
+@keyframes tv-box-pulse {
+  0%,
+  100% {
+    opacity: 0.85;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tv-box {
+    animation: none;
+  }
 }
 
 .tv-tag {
