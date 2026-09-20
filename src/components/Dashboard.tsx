@@ -20,14 +20,14 @@ import {
 import { ACTIVITY_COLORS } from '../lib/activityColors'
 import type { ActivityEvent, DetectionQuality, TrackedPerson, Zone } from '../lib/types'
 
-const QUALITY_OPTIONS: { value: DetectionQuality; label: string }[] = [
-  { value: 'fast', label: 'Fast' },
-  { value: 'balanced', label: 'Balanced' },
-  { value: 'high', label: 'High' },
+const QUALITY_OPTIONS: { value: DetectionQuality; label: string; model: string }[] = [
+  { value: 'fast', label: 'Fast', model: 'MoveNet 256px' },
+  { value: 'balanced', label: 'Balanced', model: 'MoveNet 384px' },
+  { value: 'high', label: 'High', model: 'YOLO26s-pose' },
 ]
 
 const QUALITY_DETAIL =
-  'Fast/Balanced use a lightweight model tuned for speed. High switches to a heavier, more accurate model — much better for small, close, or overlapping people (e.g. CCTV footage), at a real FPS cost. First use of High downloads the model (~42MB), cached after.'
+  'Fast and Balanced both run MoveNet MultiPose Lightning on WebGL (256px vs. 384px input — Balanced trades some speed for better small-person recall). High switches to YOLO26s-pose, a top-down pipeline (person detection, then per-person pose) that tries WebGPU first and falls back to WASM automatically — much better for small, close, or overlapping people (e.g. CCTV footage), at a real FPS cost. First use of High downloads the model (~42MB), cached after.'
 
 function formatDwell(sec: number): string {
   if (sec < 60) return `${Math.floor(sec)}s`
@@ -197,7 +197,8 @@ export default function Dashboard({
               onClick={() => handleQualityClick(opt.value)}
               title={modelLoading && quality !== opt.value ? `Switch to ${opt.label} (cancels current load)` : undefined}
             >
-              {opt.label}
+              <span className="segmented-label">{opt.label}</span>
+              <span className="segmented-model">{opt.model}</span>
             </button>
           ))}
         </div>
