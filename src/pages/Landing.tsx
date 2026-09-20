@@ -194,7 +194,7 @@ export default function Landing() {
         <section className={`lt-dark hero-block ${reduced ? 'is-static' : ''}`} ref={hero.ref}>
           <div className="hero-sticky container">
             <div className="hero-meta-row">
-              <span className="hero-meta">XTARC / EXPERIMENT 001</span>
+              <span className="hero-meta">XTARC</span>
               <span className="hero-meta hero-meta-center">COMPUTER VISION SYSTEM</span>
               <span className="hero-meta">2026</span>
             </div>
@@ -558,7 +558,7 @@ export default function Landing() {
             <GithubLogo size={15} weight="bold" />
             GitHub
           </a>
-          <span className="mono footer-built">XTARC EXPERIMENT 001</span>
+          <span className="mono footer-built">XTARC</span>
           <span className="mono footer-copy">{new Date().getFullYear()}</span>
         </div>
       </footer>
