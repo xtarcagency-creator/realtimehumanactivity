@@ -343,10 +343,6 @@
   height: 220vh;
 }
 
-.hero-block.is-static {
-  height: auto;
-}
-
 .hero-sticky {
   position: sticky;
   top: 0;
@@ -355,13 +351,6 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
-}
-
-.hero-block.is-static .hero-sticky {
-  position: static;
-  height: auto;
-  padding-bottom: 60px;
-  overflow: visible;
 }
 
 .hero-meta-row {
@@ -861,17 +850,6 @@
 .signature {
   position: relative;
   height: 300vh;
-}
-
-.signature.is-static {
-  height: auto;
-}
-
-.signature.is-static .signature-sticky {
-  position: static;
-  height: auto;
-  padding: 120px 0;
-  overflow: visible;
 }
 
 .signature-sticky {

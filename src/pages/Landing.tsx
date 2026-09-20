@@ -49,28 +49,18 @@ const CONSTRAINTS = [
   { n: '06', title: 'Browser inference latency', body: 'No server GPU to fall back on — the trade against accuracy is real and visible.' },
 ]
 
-function usePrefersReducedMotion() {
-  const [reduced, setReduced] = useState(false)
-  useEffect(() => {
-    const mq = window.matchMedia('(prefers-reduced-motion: reduce)')
-    setReduced(mq.matches)
-    const handler = () => setReduced(mq.matches)
-    mq.addEventListener('change', handler)
-    return () => mq.removeEventListener('change', handler)
-  }, [])
-  return reduced
-}
-
+// Scroll-scrubbed progress is driven directly by the visitor's own scroll
+// input, not an autoplaying animation — it stays active under
+// prefers-reduced-motion (that preference targets motion the user didn't
+// ask for, not motion they're actively scrubbing through themselves). Only
+// the boot sequence's one-shot intro and the small always-on CSS loops
+// (egrid orbit dot, boot scanline) still check the OS setting.
 /** Scroll progress (0..1) of a tall section: 0 as its top reaches the viewport top, 1 as its bottom does. */
-function useSectionScrollProgress(reduced: boolean) {
+function useSectionScrollProgress() {
   const ref = useRef<HTMLDivElement>(null)
   const [progress, setProgress] = useState(0)
 
   useEffect(() => {
-    if (reduced) {
-      setProgress(1)
-      return
-    }
     let raf = 0
     const onScroll = () => {
       cancelAnimationFrame(raf)
@@ -91,7 +81,7 @@ function useSectionScrollProgress(reduced: boolean) {
       window.removeEventListener('scroll', onScroll)
       window.removeEventListener('resize', onScroll)
     }
-  }, [reduced])
+  }, [])
 
   return { ref, progress }
 }
@@ -160,15 +150,14 @@ function SplitCTA({
 }
 
 export default function Landing() {
-  const reduced = usePrefersReducedMotion()
-  const hero = useSectionScrollProgress(reduced)
+  const hero = useSectionScrollProgress()
   const heroP = hero.progress
   const heroScale = 0.92 + 0.08 * heroP
   const heroSpread = heroP * 14
 
   const arch = useActiveStep(ARCHITECTURE.length)
   const modesStory = useActiveStep(MODES.length)
-  const signature = useSectionScrollProgress(reduced)
+  const signature = useSectionScrollProgress()
   const sigP = signature.progress
   const sigPhase1 = Math.min(1, sigP / 0.5)
   const sigPhase2 = Math.max(0, Math.min(1, (sigP - 0.5) / 0.5))
@@ -191,7 +180,7 @@ export default function Landing() {
 
       <main>
         {/* ================= HERO + CINEMATIC SCROLL TRANSITION ================= */}
-        <section className={`lt-dark hero-block ${reduced ? 'is-static' : ''}`} ref={hero.ref}>
+        <section className="lt-dark hero-block" ref={hero.ref}>
           <div className="hero-sticky container">
             <div className="hero-meta-row">
               <span className="hero-meta">XTARC</span>
@@ -380,7 +369,7 @@ export default function Landing() {
         </section>
 
         {/* ================= SIGNATURE VISUAL MOMENT ================= */}
-        <section className={`lt-dark signature ${reduced ? 'is-static' : ''}`} ref={signature.ref}>
+        <section className="lt-dark signature" ref={signature.ref}>
           <div className="signature-sticky">
             <div className="signature-visual" style={{ opacity: 0.25 + sigPhase1 * 0.75 }}>
               <SkeletonFigure spread={sigPhase1} />
