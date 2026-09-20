@@ -45,13 +45,43 @@ export function createProgressAggregator(onFraction: (fraction: number) => void)
  * an approximate fallback here is still an honest, close estimate, not a
  * fake timer.
  */
+// If the connection itself never completes — blocked by a firewall/proxy/
+// extension, a DNS hiccup, a server that accepts the connection but never
+// responds — fetch()'s own promise just never settles. No bytes ever
+// arrive, so no progress event ever fires, which (before this) meant the
+// caller's stall watchdog had nothing to measure a stall against and never
+// fired either: a genuinely silent, unbounded hang with no error and no
+// Retry button. 20s is generous for an actual TTFB (real slow-but-working
+// connections still get a response far under this) but bounds the case
+// where nothing is ever going to arrive at all.
+const CONNECT_TIMEOUT_MS = 20000
+
 export async function fetchBuffer(
   url: string,
   key: string,
   reporter?: ProgressReporter,
   expectedBytes?: number,
 ): Promise<ArrayBuffer> {
-  const res = await fetch(url)
+  // Only the pre-headers connection phase is bounded here — the timer is
+  // cleared the moment fetch() settles, so a slow-but-progressing body read
+  // afterward is never touched by it (that's the caller's stall watchdog's
+  // job, and it needs to allow arbitrarily slow-but-working connections).
+  const connectController = new AbortController()
+  const connectTimer = window.setTimeout(() => connectController.abort(), CONNECT_TIMEOUT_MS)
+  let res: Response
+  try {
+    res = await fetch(url, { signal: connectController.signal })
+  } catch (err) {
+    // The browser's own AbortError message ("signal is aborted without
+    // reason") isn't something a user should ever see — replace it with a
+    // clear, honest one specifically when this timeout caused the abort.
+    if (connectController.signal.aborted) {
+      throw new Error(`Timed out connecting to ${url} after ${CONNECT_TIMEOUT_MS / 1000}s.`)
+    }
+    throw err
+  } finally {
+    window.clearTimeout(connectTimer)
+  }
   if (!res.ok) throw new Error(`Failed to fetch ${url} (${res.status})`)
   const totalHeader = res.headers.get('content-length')
   const total = totalHeader ? Number(totalHeader) : (expectedBytes ?? null)

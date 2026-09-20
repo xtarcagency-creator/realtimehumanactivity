@@ -117,10 +117,24 @@ function configureSingleThreaded(ort: Ort) {
   ort.env.wasm.proxy = false
 }
 
+// The model file itself is identical regardless of which runtime ends up
+// using it — only the wasm runtime binary differs between the WebGPU and
+// WASM-only paths. Memoized so a WebGPU→WASM fallback reuses whatever this
+// already fetched (or is still fetching) instead of starting a second,
+// fully independent 42MB download from scratch: previously, a hang or
+// failure specific to the model file itself cost two full connect-timeout
+// waits back to back (one per path) before any error surfaced, needlessly
+// doubling worst-case recovery time.
+let modelBufPromise: Promise<ArrayBuffer> | null = null
+function getModelBuffer(reporter?: ProgressReporter): Promise<ArrayBuffer> {
+  if (!modelBufPromise) modelBufPromise = fetchBuffer(MODEL_URL, 'yolo26', reporter, MODEL_EXPECTED_BYTES)
+  return modelBufPromise
+}
+
 async function createWasmOnlySession(reporter?: ProgressReporter): Promise<OrtSession> {
   configureSingleThreaded(ortWasm)
   const [modelBuf, wasmBuf] = await Promise.all([
-    fetchBuffer(MODEL_URL, 'yolo26', reporter, MODEL_EXPECTED_BYTES),
+    getModelBuffer(reporter),
     fetchBuffer(WASM_URL, 'yolo26-wasm', reporter, WASM_EXPECTED_BYTES),
   ])
   ortWasm.env.wasm.wasmBinary = wasmBuf
@@ -166,7 +180,7 @@ async function createWebgpuSession(reporter?: ProgressReporter): Promise<OrtSess
   // actual adapter/device/session step below — the part with a real history
   // of hanging instead of failing — gets the short cap.
   const [modelBuf, wasmBuf] = await Promise.all([
-    fetchBuffer(MODEL_URL, 'yolo26', reporter, MODEL_EXPECTED_BYTES),
+    getModelBuffer(reporter),
     fetchBuffer(WEBGPU_WASM_URL, 'yolo26-wasm-webgpu', reporter, WEBGPU_WASM_EXPECTED_BYTES),
   ])
   ortWebgpu.env.wasm.wasmBinary = wasmBuf
@@ -193,12 +207,22 @@ const TRY_WEBGPU = true
 function getSession(reporter?: ProgressReporter): Promise<OrtSession> {
   if (!sessionPromise) {
     const hasWebGPU = TRY_WEBGPU && typeof navigator !== 'undefined' && 'gpu' in navigator
-    sessionPromise = hasWebGPU
+    const attempt = hasWebGPU
       ? createWebgpuSession(reporter).catch((err) => {
           console.warn('[yolo26] WebGPU session creation failed, falling back to single-threaded WASM', err)
           return createWasmOnlySession(reporter)
         })
       : createWasmOnlySession(reporter)
+    // If this ultimately fails, clear both caches instead of leaving a dead
+    // rejected promise memoized forever — otherwise the UI's Retry button
+    // (which just calls back into this same module) would get the exact
+    // same instant failure every time with no real second attempt, no
+    // matter how transient the original problem was.
+    sessionPromise = attempt.catch((err) => {
+      sessionPromise = null
+      modelBufPromise = null
+      throw err
+    })
   }
   return sessionPromise
 }

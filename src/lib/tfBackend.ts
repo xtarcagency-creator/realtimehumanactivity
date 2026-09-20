@@ -32,10 +32,16 @@ let backendPromise: Promise<void> | null = null
 
 function ensureBackend(): Promise<void> {
   if (!backendPromise) {
+    // Cleared on failure instead of memoizing a dead rejected promise
+    // forever — otherwise the UI's Retry button would get the exact same
+    // instant failure every time with no real second attempt.
     backendPromise = (async () => {
       await tf.setBackend('webgl')
       await tf.ready()
-    })()
+    })().catch((err) => {
+      backendPromise = null
+      throw err
+    })
   }
   return backendPromise
 }

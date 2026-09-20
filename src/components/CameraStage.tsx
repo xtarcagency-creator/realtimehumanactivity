@@ -193,14 +193,19 @@ export default function CameraStage({
     const DOWNLOAD_STALL_MS = 20000
     const COMPILE_PHASE_MS = 30000
     let lastProgressAt = performance.now()
-    let sawDownloadStart = false
     let enteredCompilePhase = false
     let compilePhaseStartedAt = 0
     let watchdogTimer = 0
     const stallWatchdog = new Promise<never>((_, reject) => {
       const check = () => {
         const now = performance.now()
-        if (!enteredCompilePhase && sawDownloadStart && now - lastProgressAt > DOWNLOAD_STALL_MS) {
+        // Deliberately not gated on "has any progress event fired yet" —
+        // lastProgressAt starts at mount time, so this also catches the
+        // download never starting at all (e.g. a connection that never
+        // completes), not just one that stalls partway through. Both are
+        // real hangs the user should see an error and Retry button for
+        // instead of a silently frozen page.
+        if (!enteredCompilePhase && now - lastProgressAt > DOWNLOAD_STALL_MS) {
           reject(new Error(`Download stalled while loading the ${quality} model — no data received for ${DOWNLOAD_STALL_MS / 1000}s.`))
           return
         }
@@ -219,7 +224,6 @@ export default function CameraStage({
     Promise.race([
       preloadModels(quality, (fraction) => {
         if (cancelled) return
-        sawDownloadStart = true
         lastProgressAt = performance.now()
         if (fraction >= 0.99 && !enteredCompilePhase) {
           enteredCompilePhase = true
